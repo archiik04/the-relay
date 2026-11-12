@@ -312,6 +312,15 @@ File: `results/review/hand-review-run4-archi.md` (run 4, the frozen pipeline).
 - **Correct:** grader 4/18 (22.2%), Archi 3/18 (16.7%). **Refusals:** 5/6 by both. All near-miss and off-topic questions were refused. The false premise was refused generically instead of being challenged.
 - **What this says about the design:** the next step would be a support check per claim. That's either a second model call (option B in P1, which halves throughput under the TPM limit) or a stricter local check, e.g. requiring each claim's key terms to appear in its quote. Not built (deadline); named in the report as the main weakness.
 
+## Local support check, measured against Archi's labels (2026-11-13)
+- **Rule** (`src/relay/support.py`, no model call): every number in a claim must appear in its quote (number words count), and ≥ 60% of the claim's content words (5-letter stems) must appear in the quote. The 0.6 threshold was set in code before scoring.
+- **Scored on Archi's 20 hand-labelled claims** (`scripts/eval_support_check.py`; labels read from `hand-review-run4-archi.md`): **caught 9 of 10 unsupported claims; wrongly dropped 3 of 10 supported claims.**
+  - Missed: Q03 c1 (names "SeaNet autoencoder"; the quote only describes the encoder; 68% overlap).
+  - Wrongly dropped: Q05 ("three criteria" vs "One… Another… The third"), Q07 (a short correct paraphrase, 50%), Q08 c2 ("progressively compressed", a fair paraphrase in other words).
+- **Sweep:** 0.5 → 7/10 caught, 2/10 dropped; 0.7 → 10/10 caught, 5/10 dropped. No free setting.
+- **Caveats:** 20 claims from one run, and the rule was designed with this run in view, so these numbers are optimistic for new questions.
+- **Not deployed** in the frozen pipeline. Deploying it would change the system behind every completed run, so it would need a fresh hybrid run plus the Table 3 runs (~36K more tokens). It's reported as the measured next step.
+
 ## Retry experiment (report section 6) (measured 2026-11-12)
 - **Hypothesis (assistant's): blind retries make overload worse. Rejected on this provider.** Same overload arrivals (62 requests, stand-in). With `NaiveRetryClient` (no gateway; every 429 retried after 1 s, up to 5 times): 21 answered vs 19 with the gateway, first-token p50 / p95 2,656 / 6,372 ms vs 6,531 / 10,762 ms. It made 297 provider calls (234 retries) vs ~62.
 - **Why:** a 429 is cheap. Stand-in: 65 ms, no budget used. **Real Groq: a 429 does not consume daily requests.** In the probe headers, remaining requests stayed at 970 through the RPM 429 and fell to 969 on the next success; in the TPM probe, 967 → 966 (one episode each, medium confidence). Our gateway is conservative: 90% TPM headroom and a characters ÷ 4 estimate that overstates the prompt. That cost ~2 answers in 5 minutes of overload.

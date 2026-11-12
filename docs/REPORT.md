@@ -77,7 +77,7 @@ At 3 pm, within ~30 ms:
 > *[Limited answer] Today's answering budget is used up, so I can't write a checked answer now. Full answers resume in about N minutes. These are the most relevant passages I found; they may not answer your question:* then three cited passages, e.g. *[hnet p.6] 2.2.1 Chunking Layer: "…"*
 
 ## 8. What I'm unsure about, what I left out, what I learned
-**Least certain assumption:** that a verified quote means a supported claim. It doesn't: **50% of claims overstate their quote**, so users can read confident, really-cited sentences that claim too much. Fix: a per-claim support check (a second model call at half the throughput, or a stricter local rule).
+**Least certain assumption:** that a verified quote means a supported claim. It doesn't: **50% of claims overstate their quote**, so users can read confident, really-cited sentences that claim too much. A second model call would halve throughput, so I tested a free local rule against my 20 hand labels: numbers must match and ≥ 60% of the claim's content words must appear in its quote (threshold fixed before scoring). It **caught 9 of the 10 unsupported claims but dropped 3 of the 10 good ones** (0.5 → 7 caught, 2 dropped; 0.7 → 10 caught, 5 dropped). Twenty claims is a small set, so this is measured but not yet deployed.
 
 **Deliberately not built:**
 1. a separate HTTP stand-in server (in-process instead);
