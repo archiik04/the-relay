@@ -1,0 +1,15 @@
+# Secrets: the Groq key must never be committed or submitted.
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Paper PDFs are re-fetched by scripts/fetch_papers.py and verified against
+# papers/manifest.json (committed). We don't redistribute the PDFs.
+papers/*.pdf
+
+# Chunk indexes are paper text: rebuilt by scripts/build_chunks.py
+index/

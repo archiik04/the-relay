@@ -1,0 +1,223 @@
+# The Relay benchmark: written by Archi. The assignment requires >= 15 self-written questions.
+#
+# Check with:  uv run python scripts/check_benchmark.py
+#
+# ------------------------------------------------------------------ FORMAT
+# - id: q01                      # unique, stable (results.csv refers to it)
+#   question: "..."              # exactly what a user would type
+#   category: number_table       # one of the categories below
+#   answerable: true             # false = the papers do not say
+#   answer: "..."                # short reference answer, in your words
+#   key_facts: ["28.4", "EN-DE"] # strings a correct answer MUST contain; also used to
+#                                # check your gold pages really contain them
+#   evidence:                    # where the answer is; empty list if answerable: false
+#     - paper: attention         # attention | moshi | hnet
+#       pages: [8]               # PDF page index as your viewer shows it (1 = first page),
+#                                # NOT the number printed at the bottom of the page
+#   notes: "..."                 # why this question is hard / what it tests
+#
+# ------------------------------------------------------------------ CATEGORIES
+# body_fact              a specific detail stated in the main text
+# number_text            a number stated in a sentence
+# number_table           a number that only appears in a table (tests the row-merging problem)
+# appendix               a detail that only appears in an appendix
+# cross_paper            the wording fits more than one paper ("the model", "chunking", "attention")
+# multi_part             needs two passages, possibly two pages or two papers
+# unanswerable_near_miss plausible and on-topic, but the papers don't say it
+# unanswerable_off_topic clearly outside the three papers
+# false_premise          assumes something the papers contradict. Always answerable: false.
+#                        The correct reply CHALLENGES the premise; it must not answer as if
+#                        the premise were true. If a page contradicts the premise, list it
+#                        under evidence and put the correct facts in key_facts.
+#
+# Planned split (decision B1): 18 questions = 12 answerable
+#   + 4 unanswerable_near_miss + 1 unanswerable_off_topic + 1 false_premise.
+#
+# ------------------------------------------------------------------ GUIDANCE
+# - Reviewers will ask questions "you cannot answer from memory". The Attention paper is
+#   famous; a model can answer "how many heads?" without reading anything. Prefer details
+#   a model would NOT know: Moshi and H-Net specifics, appendix values, exact table cells.
+# - Aim for ~20: about 14 answerable, about 6 that should be refused.
+# - For each answerable question, open the PDF and find the page yourself.
+# - key_facts should be short and literal ("28.4", not "about 28").
+
+questions:
+  - id: Q01
+    question: "What is the purpose of the Inner Monologue approach in Moshi, and how does it combine text and speech generation?"
+    category: body_fact
+    answerable: true
+    answer: "It improves the factuality and linguistic quality of the generated speech by having Moshi predict time-aligned text tokens before the audio tokens."
+    key_facts: ["factuality", "text tokens", "before audio tokens"]
+    evidence:
+      - paper: moshi
+        pages: [3, 15, 16]
+    notes: "Two-part question (purpose + mechanism). 'Inner Monologue' is not a key fact because the question already says it. Answered by the intro summary (p.3) and by Section 3.4.4 Inner Monologue (pp.15-16: text stream as a prefix to semantic tokens; aligning text tokens to the 12.5 Hz audio frames), checked by Archi in the PDF."
+
+  - id: Q02
+    question: "How does Moshi's multi-stream architecture handle simultaneous user input and generated speech without explicitly modelling speaker turns?"
+    category: body_fact
+    answerable: true
+    answer: "It models the user's audio and Moshi's own audio jointly as two autoregressive token streams, which removes the concept of a speaker turn and lets it learn overlap and interruptions."
+    key_facts: ["token streams", "speaker turn", "interruptions"]
+    evidence:
+      - paper: moshi
+        pages: [2, 14, 15]
+    notes: "Tests a design idea, not a number. Answered by the intro (p.2) and by Section 3.4.3 Multi-stream modeling (starts at the foot of p.14; p.15 has Figure 4 and its caption: Moshi's tokens are sampled, the user's are fed in, which handles overlapping speech turns), checked by Archi in the PDF."
+
+  - id: Q03
+    question: "How does Mimi encode audio, and what technique do the authors use to incorporate semantic information into its acoustic representation?"
+    category: body_fact
+    answerable: true
+    answer: "Mimi turns audio into discrete tokens with residual vector quantization, and distils semantic information into the first level of those acoustic tokens."
+    key_facts: ["residual vector quantization", "semantic", "first level"]
+    evidence:
+      - paper: moshi
+        pages: [3, 9, 10, 11]
+    notes: "Two-part question. Answered by the intro (p.3) and Section 3.3 Audio Tokenization: p.9 (Mimi = autoencoder with discrete bottleneck, distillation of semantic information; 3.3.1 names the Residual Vector Quantizer), p.10 (Figure 2 caption: split RVQ, WavLM distilled into a single quantizer), p.11 (3.3.2: distilled 'into the first level of the RVQ'). p.9 checked by Archi in the PDF; pp.10-11 located by text search."
+
+  - id: Q04
+    question: "According to the model hyperparameters table, how many layers and attention heads does the Moshi Depth Transformer use during training?"
+    category: number_table
+    answerable: true
+    answer: "16 attention heads and 6 layers (Table 1)."
+    key_facts: ["16", "6"]
+    evidence:
+      - paper: moshi
+        pages: [8]
+    notes: "The same table gives 32 heads / 32 layers for the Temporal Transformer, so this tests picking the right row. Numbers must be graded as whole numbers ('6' must not match '16' or '64')."
+
+  - id: Q05
+    question: "What are the three criteria the authors use to compare self-attention with recurrent and convolutional layers?"
+    category: body_fact
+    answerable: true
+    answer: "Total computational complexity per layer, the amount of computation that can be parallelized (minimum number of sequential operations), and the path length between long-range dependencies."
+    key_facts: ["computational complexity", "sequential operations", "path length"]
+    evidence:
+      - paper: attention
+        pages: [6]
+    notes: "Section 4 and Table 1. Well known: a model may answer from memory, so a correct answer here says little about retrieval."
+
+  - id: Q06
+    question: "Why do the authors use multiple attention heads instead of a single attention head?"
+    category: body_fact
+    answerable: true
+    answer: "Multiple heads let the model jointly attend to information from different representation subspaces at different positions; with a single head, averaging inhibits this."
+    key_facts: ["representation subspaces", "different positions", "averaging"]
+    evidence:
+      - paper: attention
+        pages: [5]
+    notes: "Section 3.2.2. Well known: memory-answerable risk."
+
+  - id: Q07
+    question: "How does the Transformer represent token positions despite having neither recurrence nor convolution?"
+    category: body_fact
+    answerable: true
+    answer: "It adds positional encodings (same dimension as the embeddings) to the input embeddings at the bottom of the encoder and decoder stacks, using sine and cosine functions of different frequencies, which the authors hypothesise helps the model attend by relative positions."
+    key_facts: ["positional encodings", "sine", "cosine", "relative positions"]
+    evidence:
+      - paper: attention
+        pages: [6]
+    notes: "Section 3.5. Well known: memory-answerable risk."
+
+  - id: Q08
+    question: "What are the three main processing stages in the H-Net architecture, and what happens to the representation between them?"
+    category: body_fact
+    answerable: true
+    answer: "A small encoder processes the raw data; the result is downsampled and passed through a main network operating on compressed chunks; it is then upsampled and passed through a decoder operating at the original resolution. Outer stages capture fine-grained patterns, inner stages coarser ones."
+    key_facts: ["encoder", "main network", "decoder"]
+    evidence:
+      - paper: hnet
+        pages: [2, 4]
+    notes: "Section 1 'Hierarchical Processing' (p.2) and Section 2.1 Architectural Overview (p.4)."
+
+  - id: Q09
+    question: "How does H-Net's routing module estimate whether a boundary should be placed between two adjacent representations?"
+    category: body_fact
+    answerable: true
+    answer: "It projects adjacent encoder outputs into a query and a key, scales the cosine similarity between the current query and the previous key into a boundary probability, and sets a boundary when the probability is at least 0.5. The first position has probability 1.0 by definition."
+    key_facts: ["cosine similarity", "0.5", "1.0"]
+    evidence:
+      - paper: hnet
+        pages: [6]
+    notes: "Section 2.2.1, Equation (4). KNOWN EXTRACTION LOSS: Equation (4), which holds the 0.5 threshold, is dropped by ingestion as figure-like text, so the checker warns on '0.5'. Kept on purpose: it measures the damage."
+
+  - id: Q10
+    question: "In the appendix's comparison of downsampling methods, which downsampling strategy do the authors use in the H-Net chunking layer, and what is the basic selection rule?"
+    category: appendix
+    answerable: true
+    answer: "Direct selection of boundary-marked vectors: vectors whose boundary indicator is 1 are kept and the rest are discarded. Appendix E.1 compares it with max/mean pooling and cross-attention."
+    key_facts: ["boundary", "mean pooling", "cross-attention"]
+    evidence:
+      - paper: hnet
+        pages: [6, 36]
+    notes: "Section 2.2.1 Downsampler (p.6) and Appendix E.1 (p.36). The selection rule is also in the main text, so this is not appendix-only."
+
+  - id: Q11
+    question: "How does H-Net preserve autoregressive causality during both training and inference, and what state does its routing module need to retain during inference?"
+    category: multi_part
+    answerable: true
+    answer: "In training it uses causal masking in all sequence-mixing layers; boundary probabilities depend only on the current and previous representations, and the smoothing module's recursive form depends only on past compressed representations. At inference the routing module keeps the key value of the most recently processed token."
+    key_facts: ["causal masking", "recursive", "key"]
+    evidence:
+      - paper: hnet
+        pages: [9, 10]
+    notes: "Section 2.4: 'Training' on p.9, the inference state on p.10. Two passages across a page break. 'key' must be graded as a whole word."
+
+  - id: Q12
+    question: "How do the two papers handle sequence structure differently: how does the Transformer represent token order, and how does H-Net determine the boundaries of its chunks?"
+    category: multi_part
+    answerable: true
+    answer: "The Transformer adds fixed sinusoidal positional encodings to its input embeddings. H-Net learns content- and context-dependent chunk boundaries from data, with a routing module that uses the cosine similarity of adjacent representations."
+    key_facts: ["positional encodings", "sine", "cosine similarity", "context-dependent"]
+    evidence:
+      - paper: attention
+        pages: [6]
+      - paper: hnet
+        pages: [2, 6]
+    notes: "Two-paper comparison graded on cited facts from each paper (option (a)). Tests combining two papers with citations."
+
+  - id: Q13
+    question: "What exact accuracy does Moshi achieve on a benchmark for recognizing emotions such as happiness, sadness, and anger from speech?"
+    category: unanswerable_near_miss
+    answerable: false
+    answer: "Refuse. Moshi discusses keeping non-linguistic information such as emotion (pp.1, 2, 6) but reports no emotion-recognition benchmark or accuracy."
+    notes: "Nearest passages: moshi pp.1-2 (emotion lost in cascaded pipelines), p.6 (can generate a range of emotions), p.19 (emotion role-play prompts). Searched the pinned PDF for 'emotion recognition' and 'SER': no hits."
+
+  - id: Q14
+    question: "How many gigabytes of GPU memory does the Transformer require to train on the WMT 2014 English-to-German dataset?"
+    category: unanswerable_near_miss
+    answerable: false
+    answer: "Refuse. The paper gives the hardware (8 NVIDIA P100 GPUs) and training time, but no memory requirement in gigabytes."
+    notes: "Nearest passages: attention p.7 (5.1 batching, 5.2 Hardware and Schedule), p.8 (3.5 days on 8 P100s). Trap: a model may 'answer' with the P100's memory size from its own knowledge, which the paper does not state."
+
+  - id: Q15
+    question: "What is the measured end-to-end speech-generation latency of H-Net when generating spoken dialogue in real time?"
+    category: unanswerable_near_miss
+    answerable: false
+    answer: "Refuse. H-Net is evaluated on text, code, Chinese and DNA; it reports no speech-generation or real-time dialogue latency."
+    notes: "H-Net mentions audio only in related work (p.5, p.32). Cross-paper trap: Moshi reports real-time latency figures, and the system must not attribute them to H-Net."
+
+  - id: Q16
+    question: "What video frame rate does Moshi use when processing live video alongside speech during a conversation?"
+    category: unanswerable_near_miss
+    answerable: false
+    answer: "Refuse. Moshi has no video input. Its only 'frame rate' is the 12.5 Hz audio codec frame rate, which is not a video frame rate."
+    notes: "Trap: 'Frame rate 12.5 Hz' appears in moshi Table 1 (p.8) and on p.12, but for audio tokens. Searched the pinned PDF for 'video' and 'visual': no hits."
+
+  - id: Q17
+    question: "What is the time complexity of Dijkstra's shortest-path algorithm when implemented using an adjacency list and a binary heap?"
+    category: unanswerable_off_topic
+    answerable: false
+    answer: "Refuse: none of the three papers covers this."
+    notes: "Searched all three pinned PDFs for 'Dijkstra' and 'shortest path': no hits. Memory-answerable on purpose: the system must refuse even though the model knows the answer."
+
+  - id: Q18
+    question: "Which convolutional layers does the Transformer use to extract local features before applying self-attention?"
+    category: false_premise
+    answerable: false
+    answer: "The premise is false: the Transformer is based solely on attention mechanisms and dispenses with recurrence and convolutions entirely, so there are no convolutional feature-extraction layers to name."
+    key_facts: ["solely on attention", "no convolution"]
+    evidence:
+      - paper: attention
+        pages: [1, 6]
+    notes: "Contradicted in the abstract (p.1) and in 3.5 'contains no recurrence and no convolution' (p.6). Subtlety: p.5 describes the feed-forward layer as 'two convolutions with kernel size 1'. That is position-wise, applied after attention and not for local features, so the premise is still false, but a system citing p.5 may wrongly accept it. Grade on whether the premise is challenged, not on key-fact matching alone."
