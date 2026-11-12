@@ -28,6 +28,9 @@ from reportlab.platypus import (KeepTogether, NextPageTemplate, PageBreak, PageT
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "submission" / "The_Relay_Writeup.pdf"
 MAX_WRITEUP_PAGES = 2
+SUBMISSION = ROOT / "submission" / "The_Relay_Submission.pdf"  # write-up + tables + transcript; local only
+TRANSCRIPT_MD = ROOT / "submission" / "conversation-history.md"
+PAGE_OFFSET = 0  # so appended parts continue the page numbering
 
 ACCENT = colors.HexColor("#1F4E79")
 MUTED = colors.HexColor("#555555")
@@ -179,7 +182,7 @@ def footer(canvas, doc):
     canvas.saveState()
     canvas.setFont(BODY, 7.5)
     canvas.setFillColor(MUTED)
-    canvas.drawRightString(canvas._pagesize[0] - doc.rightMargin, 0.7 * cm, f"The Relay · page {doc.page}")
+    canvas.drawRightString(canvas._pagesize[0] - doc.rightMargin, 0.7 * cm, f"The Relay · page {doc.page + PAGE_OFFSET}")
     canvas.restoreState()
 
 
@@ -217,6 +220,33 @@ def main() -> None:
     build(parse_markdown(report_md), OUT, intro + parse_tables(tables_md, width))
     total = len(PdfReader(str(OUT)).pages)
     print(f"{OUT}: {total} pages ({pages} write-up + {total - pages} tables)")
+    if TRANSCRIPT_MD.exists():
+        attach_transcript(total)
+
+
+def attach_transcript(first_page: int) -> None:
+    """The submission copy: write-up + tables + the conversation history as an appendix (local only)."""
+    global PAGE_OFFSET
+    from pypdf import PdfWriter
+    import build_transcript_pdf as T
+
+    appendix = io.BytesIO()
+    PAGE_OFFSET = first_page
+    try:
+        build(T.story_for(TRANSCRIPT_MD.read_text(encoding="utf-8")), appendix)
+    finally:
+        PAGE_OFFSET = 0
+    w = PdfWriter()
+    w.append(str(OUT))
+    n = len(w.pages)
+    w.append(io.BytesIO(appendix.getvalue()))
+    w.add_outline_item("Write-up", 0)
+    w.add_outline_item("Results tables", MAX_WRITEUP_PAGES)
+    w.add_outline_item("Appendix: conversation history", n)
+    w.add_metadata({"/Title": "The Relay: write-up, tables and conversation history", "/Author": "Archi Kanungo"})
+    with open(SUBMISSION, "wb") as f:
+        w.write(f)
+    print(f"{SUBMISSION}: {len(w.pages)} pages (appendix from page {n + 1}; local only, not pushed)")
 
 
 if __name__ == "__main__":
