@@ -13,3 +13,7 @@ papers/*.pdf
 
 # Chunk indexes are paper text: rebuilt by scripts/build_chunks.py
 index/
+
+# Conversation history: submitted privately, never pushed (Archi, 13 Nov)
+submission/conversation-history.md
+submission/The_Relay_Conversation_History.pdf
