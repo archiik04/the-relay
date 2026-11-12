@@ -49,6 +49,19 @@ class Question:
     notes: str = ""
 
 
+ALT_SEP = " | "
+
+
+def alternatives(fact: str) -> list[str]:
+    """A key fact may list accepted wordings: "sine | sinusoidal". Any one of them counts."""
+    return [a.strip() for a in fact.split(ALT_SEP) if a.strip()]
+
+
+def _fact(k) -> str:
+    # In YAML, alternatives are written as a list: - [sine, sinusoidal]
+    return ALT_SEP.join(str(a) for a in k) if isinstance(k, list) else str(k)
+
+
 def load(path: Path = BENCHMARK_PATH) -> list[Question]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     out = []
@@ -57,7 +70,7 @@ def load(path: Path = BENCHMARK_PATH) -> list[Question]:
         out.append(Question(
             id=str(q["id"]), question=q["question"], category=q["category"],
             answerable=bool(q["answerable"]), answer=q.get("answer", ""),
-            key_facts=[str(k) for k in (q.get("key_facts") or [])], evidence=ev, notes=q.get("notes", ""),
+            key_facts=[_fact(k) for k in (q.get("key_facts") or [])], evidence=ev, notes=q.get("notes", ""),
         ))
     return out
 
@@ -116,7 +129,8 @@ def validate(questions: list[Question], page_text: dict[tuple[str, int], str], p
                     warnings.append(f"{where} {ev.paper} p.{pg} has no searchable text (references/excluded/figure-only?)")
         gold = " ".join(page_text.get((ev.paper, pg), "") for ev in q.evidence for pg in ev.pages)
         for fact in q.key_facts:
-            if _norm(fact) not in _norm(gold):
+            # At least one accepted wording must actually be on a gold page.
+            if not any(_norm(a) in _norm(gold) for a in alternatives(fact)):
                 warnings.append(f"{where} key fact '{fact}' not found in extracted text of its gold pages "
                                 "(wrong page? or extraction mangled it: if so that's a finding)")
     return errors, warnings

@@ -194,10 +194,26 @@ class Retriever:
         if config.rerank:
             rerank_model()
 
-    def search(self, query: str) -> RetrievalResult:
+    def warm_up(self) -> None:
+        """Load models and run one search, so the first timed request isn't charged for loading.
+
+        Found in M4: the first real search loaded the embedding model inside the 5 s tool
+        timeout, timed out twice, and the question was reported as search_failed.
+        """
+        self.search("warm up")
+
+    def _paper_mask(self, paper: str) -> np.ndarray:
+        mask = np.array([c.paper == paper for c in self.chunks])
+        if not mask.any():
+            raise ValueError(f"unknown paper {paper!r}")
+        return mask
+
+    def search(self, query: str, paper: str | None = None) -> RetrievalResult:
+        """Top-k chunks for `query`; `paper` restricts the search to one paper (comparison branch)."""
         if not query or not query.strip():
             raise ValueError("empty query")
         cfg = self.config
+        mask = self._paper_mask(paper) if paper else None
         t: dict[str, float] = {}
         t0 = time.perf_counter()
         # Never truncate silently: a question over budget skips rerank, and the result says so.
@@ -208,7 +224,9 @@ class Retriever:
         if self.bm25 is not None:
             s = time.perf_counter()
             bm25_scores = self.bm25.get_scores(bm25_tokens(query))
-            rankings.append(list(np.argsort(-bm25_scores)[: cfg.fetch_k]))
+            if mask is not None:
+                bm25_scores = np.where(mask, bm25_scores, -np.inf)
+            rankings.append(_ranked(bm25_scores, cfg.fetch_k))
             t["bm25_ms"] = _ms(s)
 
         if self.vectors is not None:
@@ -217,7 +235,9 @@ class Retriever:
             t["embed_query_ms"] = _ms(s)
             s = time.perf_counter()
             cos = self.vectors @ qv
-            rankings.append(list(np.argsort(-cos)[: cfg.fetch_k]))
+            if mask is not None:
+                cos = np.where(mask, cos, -np.inf)
+            rankings.append(_ranked(cos, cfg.fetch_k))
             t["dense_ms"] = _ms(s)
 
         s = time.perf_counter()
@@ -255,6 +275,12 @@ class Retriever:
             max_rerank=max((h.rerank for h in hits if h.rerank is not None), default=None),
             rerank_skipped_long_query=skip_rerank,
         )
+
+
+def _ranked(scores: np.ndarray, k: int) -> list[int]:
+    """Indices of the top-k scores, never including masked-out (-inf) chunks."""
+    order = np.argsort(-scores)[:k]
+    return [int(i) for i in order if np.isfinite(scores[i])]
 
 
 def _ms(start: float) -> float:

@@ -31,6 +31,10 @@ people away **early and honestly** instead of letting them time out slowly.
 
 - **"Why section-aware chunks instead of fixed windows?"** (Archi's argument, in their words) A chunk that mixes two sections can be retrieved for keywords from both. The model then merges claims that the paper keeps apart and cites the wrong section. Boundaries should preserve meaning, not just satisfy a token limit.
 - **"How did you know your extraction was right?"** We didn't trust counts. We read random samples, and every problem found by eye (missing spaces, figures read as tables, table numbers deleted) became a test.
+- **"Why hybrid and not just BM25? BM25 is faster."** It saves ~15 ms of a ~1 s request. BM25 matches exact words, and our questions reuse the papers' wording, so the benchmark flatters it. A paraphrasing user ("how does it decide where to split?") gets nothing from BM25; dense search covers that, and BM25 covers exact tokens like "Table 1" or "28.4". (R7)
+- **"Why no reranker?"** We measured it: no recall gain, +600–770 ms per question on CPU. It's local, so it costs time, not Groq quota. (R6, R7)
+- **"Can you refuse unanswerable questions with a score threshold?"** Only the clearly off-topic ones. Near-miss questions retrieve passages that score as high as real answers, because they're about the right topic. Refusing them needs a check at answer time: does the retrieved text actually contain the answer? (R6)
+- **"Your recall numbers differ by 8 points: is that real?"** With 12 answerable questions, one question is 8.3 points. We chose on reasoning and let the end-to-end answer grades test it.
 - **"Where does your retriever get fooled?"** Real examples from these PDFs: (1) table rows are merged, so numbers pair with the wrong model (Attention Table 2); (2) "10^19" extracts as "1019"; (3) references and synthetic dialogues match keywords but aren't evidence, so we excluded them; (4) tables carry the section of the page they sit on, not the section that discusses them.
 
 ## Misconceptions caught so far (keep these honest)
@@ -40,4 +44,5 @@ people away **early and honestly** instead of letting them time out slowly.
 - With deadlines in place, starvation can't happen.
 - A test that can never fail proves nothing. Test the *checker* with inputs it must reject, not only the happy path.
 - The stamp is printed by arXiv for the version it serves, so "a wrong version with the right stamp" isn't the risk. The risk is a **checker too loose** to tell versions apart.
+- The reranker runs locally: it costs latency, not Groq tokens. What costs Groq quota is every extra **setting** in Table 3, since each one has to be answered end-to-end to be graded.
 - "Never weaken answers" contradicts the brief, which asks who gets a weaker answer. The rule is: weaker but correct, and labelled.

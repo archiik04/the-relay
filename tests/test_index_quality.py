@@ -106,6 +106,15 @@ def test_empty_query_rejected():
         r.search("   ")
 
 
+def test_paper_filter_returns_only_that_paper():
+    r = Retriever(RetrievalConfig(chunks=SETTINGS[-1], mode="hybrid"))
+    for paper in ("attention", "moshi", "hnet"):
+        res = r.search("How are positions or boundaries represented?", paper=paper)
+        assert res.hits and all(h.chunk.paper == paper for h in res.hits)
+    with pytest.raises(ValueError):
+        r.search("x", paper="nope")
+
+
 def test_over_long_question_skips_rerank_and_says_so():
     r = Retriever(RetrievalConfig(chunks=SETTINGS[0], mode="hybrid", rerank=True))
     long_q = "Explain " + " and ".join(["how the encoder handles very long attention contexts"] * 12) + "?"

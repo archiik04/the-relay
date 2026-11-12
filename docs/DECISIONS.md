@@ -146,6 +146,123 @@ Labels used below:
   4. Splitting a giant cell dropped its closing delimiter.
   - **Now:** splits happen only between cells, then sentences, then whole words, and nothing is dropped. Tests check that every word of searchable text is indexed, and that every section and document ends with its real final words.
 
+## R6: First retrieval evaluation on the frozen benchmark (measured)
+**Status:** Measured 2026-11-12; the choice of settings is Archi's · Run: `results/retrieval/retrieval-eval-20261112T110234Z.csv` (benchmark commit 932b143, 3 repeats, CPU)
+
+| Setting (k=4) | recall@k | full | MRR | p50 ms |
+|---|---|---|---|---|
+| t256 bm25 | 83.3% | 75.0% | 0.569 | 1.1 |
+| t256 dense | 91.7% | 83.3% | 0.833 | 19.6 |
+| t256 hybrid | 100% | 91.7% | 0.694 | 22.1 |
+| t256 hybrid+rerank | 91.7% | 83.3% | 0.688 | 634.6 |
+| t384 bm25 | 91.7% | 91.7% | 0.708 | 0.8 |
+| t384 dense | 100% | 91.7% | 0.840 | 16.2 |
+| t384 hybrid | 91.7% | 91.7% | 0.833 | 18.9 |
+| t384 hybrid+rerank | 83.3% | 83.3% | 0.653 | 784.2 |
+
+- **n = 12 answerable, so one question = 8.3 points.** Most differences are one or two questions. The misses are concentrated in **Q02** (Moshi multi-stream) and **Q12** (two-paper comparison).
+- **The reranker never helped:** recall equal or lower in both chunk sizes, at **+600–770 ms** of CPU time per question.
+- **No retrieval score separates near-miss from answerable.** With rerank, near-miss best scores are 0.9–3.2, while answerable ones go down to 0.63–0.78 (Q12) and 3.2 (Q08, Q09). Cosine overlaps too (median 0.78 vs 0.81). Only the off-topic question is clearly separable (rerank ≈ −9). **Consequence:** refusing near-misses must be done by the answer-time grounding check, not by a retrieval threshold. A retrieval threshold can only catch clearly off-topic questions.
+- **Q12 (two papers): the top 4 are all H-Net in every t384 setting.** One query with k=4 can't serve a comparison. Candidate fix: retrieve per paper, or split the question into one query per paper (a pipeline branch).
+- **False premise (Q18):** the contradicting passage was retrieved in 8/8 settings (n=1).
+- **Q09 ranks first but its passage lacks `0.5`** (equation dropped), so recall overstates it. The answer grade will show the gap.
+
+## R7: Retrieval settings for Table 3 and the pipeline default
+**Status:** Accepted (2026-11-12) · **Who:** Archi chose, from R6 and the assistant's recommendation
+
+- **Table 3 settings:** t384 with bm25, dense and hybrid, all **without the reranker**. Same chunks for all three, so only the search method varies.
+- **Pipeline and load-test default: t384 hybrid (k=4).**
+  - BM25 catches exact tokens (table numbers, values, model names) and dense catches paraphrase.
+  - Cost is ~19 ms p50 against ~1 s of LLM time.
+  - Dense was marginally better on our 12 questions (one question's difference), which is too small to decide on. Table 3's answer grades will confirm or overturn this.
+- **Reranker dropped.** Measured in R6: no recall gain in either chunk size, +600–770 ms per question on CPU. It uses no Groq quota (it runs locally); the cost is latency, which breaks the response budget.
+- **Why not BM25 as the default:** it saves ~15 ms (~1.5% of a request), ranks the right page lower (MRR 0.708 vs 0.833), and our questions reuse the papers' wording, which flatters exact-word matching. Paraphrased user questions would hurt it.
+- **Carried into M4:** refusals for near-miss questions must come from the answer-time grounding check (R6: no retrieval score separates them). A two-paper question needs per-paper retrieval or a split query (Q12).
+
+## P1–P6: The answer pipeline (M4)
+**Status:** Accepted (2026-11-12) · **Who:** assistant proposed; Archi tightened the support rule, added the separate model timestamps, and required consistent grading plus measured semantic failures
+
+- **P1: five steps, one model call per answer (option C).**
+  1. **Understand** (code): which papers are named, and is it a comparison?
+  2. **Retrieve**: the `search_papers` tool (t384 hybrid, k=4), with a timeout.
+  3. **Decide** (the branch): a comparison runs one search per paper. A tool timeout gets one retry, then a labelled "couldn't search" reply. Never answer without passages.
+  4. **Draft** (one Groq call): JSON with `status` ∈ {answered, not_in_papers, premise_false} and claims, each with a chunk ID and an exact quote.
+  5. **Check** (code): cited chunks were retrieved, and quotes appear word for word. One redraft on failure (the loop), then refuse.
+  - **Why C:** reserving 2,000 prompt + 512 output = 2,512 tokens per call gives 8,000 / 2,512 ≈ 3.18 calls/min under the TPM limit. Options A and B (2–3 calls per answer) give about 1–1.6 answers/min. Every redraft costs a second reservation, so the redraft rate is measured.
+- **Support rule (Archi):** every factual claim must be **directly stated in its quote**. That includes numbers, capabilities and comparisons; inference doesn't count. If the passages don't support an answer → `not_in_papers`. If a passage contradicts the question's assumption → `premise_false`, with the contradicting quote.
+  - **Comparisons:** each paper's side is quoted separately and set side by side. No added judgment that no quote states.
+  - **Partly answerable:** answer the supported part and say plainly which part the papers don't cover.
+- **What the check proves, and what it doesn't (Archi):** the exact-quote check proves the chunk and the quote are genuine. **It does not prove the claim follows from the quote.** Semantic support is measured instead, by hand-labelling each claim in the 18-question run (*supported by its quote: yes/no*) → the unsupported-claim rate, reported with its n.
+- **P2:** no retrieval-score threshold in v1 (R6: none separates near-miss from answerable). Scores are still logged.
+- **P3:** gpt-oss-20b, `reasoning_effort: low`, `max_tokens: 512`, temperature 0. JSON mode is verified with one real call before anything relies on it. A 20b vs 120b comparison runs on the 18 questions.
+- **P4: three timestamps (Archi),** so latency splits into waiting, generation and checking:
+  - `model_first_token_ms`: the model's first token (queue + prompt processing);
+  - `model_last_token_ms`: the model finishes (generation);
+  - `first_token_ms`: the checked answer starts sending to the user (check, plus any redraft).
+  - The `model_*` columns follow the required columns in results.csv (closes D-open-2).
+- **P5: one deterministic grader** in code and under version control, used unchanged for every setting, model and run. No model judges the answers. A rule change means re-grading every saved answer.
+  - **Answerable question:** `correct` if every key fact is present (numbers and short words as whole words) and at least one citation is a gold page. Otherwise `wrong`, or `refused_wrongly` if it refused.
+  - **Refusal questions:** `refused_correctly` if refused, else `wrong`. For a false premise, it's correct only if the status is `premise_false`, or a refusal that cites the contradicting page.
+  - Archi reads all 18 answers once. Any disagreement with the grader is a logged grader fix.
+- **P6:** the pipeline talks to a `ModelClient` interface (Groq now, the gateway in M5, the stand-in in M6), and is async throughout.
+
+## M4 run 1: first end-to-end run (measured 2026-11-12)
+Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T112623Z.jsonl` (gpt-oss-20b, t384 hybrid k=4, grader g1). Kept as-is, bugs included.
+(A two-question smoke-test log from before the warm-up fix was deleted by the assistant; it only showed the cold-start failure described below.)
+
+- **Grades:** 4 correct, 6 wrong, 3 refused_wrongly, 5 refused_correctly. All 4 near-miss and the off-topic question were refused correctly. The false premise was refused, but not challenged.
+- **Tokens:** ~1,500–2,000 prompt tokens per call (the 2,000 estimate holds); 71–302 completion tokens.
+- **Bugs found (assistant's code), fixed after this run:**
+  1. **The quote check rejected genuine quotes:** gpt-oss writes hyphens as U+2011, and maths spacing differs from the PDF ("𝑏𝑡 = 1" vs "𝑏𝑡= 1"). This caused 2 of the 3 refused_wrongly (Q02, Q03). Fix: normalise those hyphens and ignore whitespace. Replaying the saved drafts offline, both pass on the first draft. Tests still reject changed or reordered words.
+  2. **Right quote, wrong chunk ID** (Q10). The model repeated it when asked to redraft. Fix: if the quote is in exactly one other retrieved chunk, re-point the citation there (`citations_fixed`). That's cheaper than a redraft, and the citation becomes true.
+  3. **An empty stream with no finish reason counted as success** (Q03's redraft). Now it's an error.
+  4. **Cold start:** in the smoke test, the first search loaded the embedding model inside the 5 s tool timeout and failed twice. Fix: `Retriever.warm_up()` at startup.
+- **Real model behaviour, kept as findings:**
+  - **Q12 shows a semantic failure the quote check can't catch.** The H-Net claim "learns to segment … by predicting token boundaries" cites a genuine quote about distillation that doesn't say that. The reply also contains sentences that aren't in any claim. Exactly what Archi predicted: verbatim ≠ supported.
+  - **Q18:** "the papers do not state that it uses convolutional layers" (`not_in_papers`) instead of `premise_false`, although the retrieved p.6 says "contains no recurrence and no convolution".
+  - **Q09:** answered without 0.5 or 1.0. 0.5 is absent from the index (equation dropped); 1.0 was present, but omitted.
+  - **Q01 model_first_token 7,719 ms**, with Groq's own queue_time at 0.26 s. That's ~7.4 s before Groq's queue, on the first call of the run, and not yet explained.
+- **Grading issues that need Archi's decision (benchmark is frozen, so these are logged B1 edits if accepted):**
+  - **Q01, Q07: correct answers graded wrong because of the key-fact wording.** Q07 said "sinusoidal" (key facts `sine`, `cosine`). Q01 used p.15's wording ("linguistic quality", "prefix"), but its key facts come from p.3 ("factuality", "before audio tokens").
+  - **Q04: correct answer (16 heads, 6 layers), cited pp.13–14.** Section 3.4 prose states the same numbers, but the gold page lists only the table (p.8). The question says "according to the hyperparameters table".
+
+## M4 run 2: after the bug fixes (measured 2026-11-12)
+Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T115427Z.jsonl` (grader g2). Run 1 re-graded with g2: 7 correct, 3 wrong, 3 refused_wrongly, 5 refused_correctly.
+
+- **Grades:** 7 correct, 6 wrong, 0 refused_wrongly, 5 refused_correctly.
+  - Answerable: 7/12 correct (58.3%), 0 wrongly refused.
+  - Refusal group: 5/6 (83.3%); Q18 was refused, not challenged.
+- **The fixes worked:** all 18 answered with one model call; 0 redrafts; 1 citation re-pointed (Q10).
+- **Timing (n=18):** model first token 268–1,648 ms; first_token (checked reply out) 414–1,718 ms. The check itself adds 1–14 ms.
+- **The remaining wrong answers:**
+  - **Q02, Q10, Q12: the reply contains sentences that are in no claim**, or claims whose quote doesn't state them. Q02's "outputs silence for its own stream" is not in its quote. Q12's H-Net side cites a distillation passage. Q10's selection rule is in the reply but not claimed. The structure allows free text in `answer` beside the claims, and the model uses it.
+  - **Q12:** each per-paper search still uses the whole two-paper question. The H-Net search returned p.4 and p.39, not the routing module (p.6).
+  - **Q03:** wording ("split residual vector quantiser") and content (never says "first level").
+  - **Q10's key facts ask for more than the question:** `mean pooling` and `cross-attention` aren't asked for by the question.
+  - **Q09:** 0.5 missing from the index; 1.0 omitted. **Q18:** `not_in_papers` instead of `premise_false`.
+- **Hand review:** `results/review/review-answers-gpt-oss-20b-t384-o32-hybrid-20261112T115427Z.md`. Archi labels each claim supported/unsupported (P1) and agrees or disagrees with each grade (P5).
+
+## P7: The reply is built only from checked claims
+**Status:** Accepted (2026-11-12) · **Who:** assistant proposed after run 2; Archi approved
+
+- The free-text `answer` field is gone. The user sees the claim sentences in order, each followed by the citation for its chunk (built by code), plus a labelled "The papers don't cover: …" when part of the question is unsupported. Refusals use fixed wording.
+- **Why:** in run 2, Q02, Q10 and Q12 had reply sentences that no claim backed. Now no sentence reaches the user without a verified quote beside it.
+- **What it doesn't fix:** a claim can still overstate its quote. P7 removes unclaimed text, not bad claims. The hand review still measures semantic support.
+- **Cost:** the reply reads as cited points rather than a flowing paragraph. Model calls are unchanged.
+- **Amendment after run 3 (Archi: "keep P7, ask for coverage"):** run 3 showed the model writing fewer claims and dropping parts of the answer. The prompt now says: cover every supported part of the question, one claim per distinct point. It's a general rule, written because of how the reply is built, not for particular questions.
+
+## M4 run 3: replies built from claims only (P7) (measured 2026-11-12)
+Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T123207Z.jsonl`. Q03 alone was re-run in `…123813Z.jsonl` to diagnose it.
+
+- **Grades: 4 correct (was 7), 8 wrong, 1 no answer (Q03), 5 refused_correctly.**
+- **P7 made answers shorter, not only cleaner.** Claims per answer fell (run 2: mostly 2–3; run 3: mostly 1).
+  - Q07 dropped "sinusoidal" and "relative positions"; Q05 dropped "sequential operations". Q02 is now shorter, but every sentence is quoted.
+  - Q06 is the same answer, but now "average" ≠ key fact "averaging". In run 2 the grader also read claim texts that said "averaging".
+- **One run per setting, and the model is not deterministic at temperature 0** (Q12 needed a redraft in run 3 but not in run 2). Differences of 1–3 questions between runs are partly noise.
+- **Real-service finding: Groq's JSON mode can fail server-side.** A 200 stream carries `{"code": "json_validate_failed", "failed_generation": ""}` after ~700 ms of generation, and no usage is reported. It's repeatable on Q03, whose passages are full of maths symbols. Before this, the client recorded it as "stream ended without a finish_reason". **Handling:** capture in-stream errors; on `json_validate_failed`, redraft once with JSON mode off (our own parser and check still reject non-JSON).
+- **Budget:** answer runs today used **115,463 measured tokens**. The failed Q03 calls report no usage, so the real total is higher. Against the documented (unverified) 200K tokens/day, about 2 more full runs fit today.
+- **Grader caution:** adding alternative wordings after seeing the answers (e.g. "average" for Q06) would tune the grader to the outputs. The hand review measures grader error instead.
+
 ## B1: Benchmark protocol
 **Status:** Accepted (2026-11-12) · **Who:** Archi set the composition and the no-invention rule; the assistant added the freeze rule
 
@@ -154,10 +271,25 @@ Labels used below:
 - **Written and frozen (git commit) before any retrieval results are seen.** Later edits are allowed only for broken questions (wrong page, ambiguous), each logged with its reason; never because the retriever failed on it.
 - **Final split (frozen 2026-11-12):** 12 answerable (8 body_fact, 1 number_table, 1 appendix, 2 multi_part) + 4 unanswerable_near_miss + 1 unanswerable_off_topic + 1 false_premise.
 - Q01–Q03 evidence widened before the freeze to include the detailed sections, not just the intro summary. Archi checked them in the PDF: Moshi 3.4.4 (pp. 15–16), 3.4.3 (pp. 14–15), 3.3 (pp. 9–11).
+- **B1 edit 1 (2026-11-12, after M4 run 1; Archi: "allow alternatives").** Reason: the grader rejected correct answers because of wording, not because the retriever or model failed.
+  - Key facts may list accepted wordings (any one counts; at least one must be on a gold page). Grader g1 → g2. Every saved run is re-graded with g2.
+  - Q01: `factuality` | `linguistic quality`; `before audio tokens` | `prefix`. The p.3 and pp.15–16 gold pages word it differently.
+  - Q07: `sine` and `cosine` merged into one fact, `sine` | `sinusoid` | `sinusoidal`. Q12 gets the same alternatives for `sine`.
+  - Q04: pp.13–14 added. Section 3.4 prose states the same 16 heads / 6 layers.
 - **Grader rules this benchmark needs:** numbers match as whole numbers (Q04 `6` ≠ `16`); short key facts match as whole words (Q11 `key`); the false-premise question (Q18) is graded on whether the answer challenges the premise, not on key-fact matching alone.
 
+## M4 final: pipeline frozen at run 4's version (2026-11-12)
+Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T124111Z.jsonl` (P7 + coverage rule).
+
+- **Run 4:** 4 correct, 9 wrong, 5 refused_correctly. The coverage rule did not change behaviour: Q07 and Q10 are still one claim. Q04 is correct but wrote "six" and "sixteen", which the grader misses.
+- **Frozen anyway, by deadline and by principle.** Every sentence a user sees has a verified quote behind it, which follows the brief's "never send a wrong or embarrassing answer". The measured cost is completeness: run 2's free-text version scored 7 by the grader, partly *because* of unsupported sentences. The report shows all three runs. The hand review measures how many "wrong" grades are correct answers the grader missed.
+- **Schedule correction (Archi, 18:15 IST on 12 Nov):** submission is due **13 Nov 13:40 IST**, not in 2 days. Cut: the 20b vs 120b comparison, the stand-in as a separate server process, and gateway extras.
+
+## Resolved
+- **D-open-1 → stand-in rows have an empty `answer_grade`,** reported as "not measured". The stand-in's text is synthetic.
+- **D-open-2 → extra columns after the required ones:** `model_first_token_ms`, `model_last_token_ms`, `queue_ms`, `retry_sleep_ms`, `final_status`, `degraded`, `question_id`, and so on.
+- **D-open-3 → no fallback to a second model (Archi).** "We need to test the work with the limits itself." When the daily budget is gone, the reply is a labelled passages-only answer (no model call).
+- **No frontend (Archi asked; assistant recommended against).** The brief asks for code, raw results and the report. A command-line `scripts/ask.py` serves the live demo.
+
 ## Open
-- **D-open-1:** what goes in `answer_grade` for stand-in rows? (Proposal: empty, reported as "not measured".)
-- **D-open-2:** extra CSV columns after the required ones (queue_ms, retry_sleep_ms, provider_ttft_ms, degraded_level, …).
-- **D-open-3:** fall back to a *second* Groq model when the first one's daily quota is gone? Is that legitimate degradation, or a "trick to get around limits"? Decide before M8.
 - **D-open-4:** the numeric meaning of "fast" at low load. Set after the M3 calibration.

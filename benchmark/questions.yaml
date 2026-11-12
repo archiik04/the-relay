@@ -9,7 +9,9 @@
 #   answerable: true             # false = the papers do not say
 #   answer: "..."                # short reference answer, in your words
 #   key_facts: ["28.4", "EN-DE"] # strings a correct answer MUST contain; also used to
-#                                # check your gold pages really contain them
+#                                # check your gold pages really contain them.
+#                                # Accepted alternative wordings go in a list: - [sine, sinusoidal]
+#                                # (any one counts; at least one must be on a gold page)
 #   evidence:                    # where the answer is; empty list if answerable: false
 #     - paper: attention         # attention | moshi | hnet
 #       pages: [8]               # PDF page index as your viewer shows it (1 = first page),
@@ -47,7 +49,7 @@ questions:
     category: body_fact
     answerable: true
     answer: "It improves the factuality and linguistic quality of the generated speech by having Moshi predict time-aligned text tokens before the audio tokens."
-    key_facts: ["factuality", "text tokens", "before audio tokens"]
+    key_facts: [["factuality", "linguistic quality"], "text tokens", ["before audio tokens", "prefix"]]
     evidence:
       - paper: moshi
         pages: [3, 15, 16]
@@ -83,8 +85,8 @@ questions:
     key_facts: ["16", "6"]
     evidence:
       - paper: moshi
-        pages: [8]
-    notes: "The same table gives 32 heads / 32 layers for the Temporal Transformer, so this tests picking the right row. Numbers must be graded as whole numbers ('6' must not match '16' or '64')."
+        pages: [8, 13, 14]
+    notes: "The same table gives 32 heads / 32 layers for the Temporal Transformer, so this tests picking the right row. Numbers must be graded as whole numbers ('6' must not match '16' or '64'). pp.13-14 added after the freeze (B1 edit, M4 run 1): Section 3.4 prose states the same numbers ('the Depth Transformer used for Moshi has 6 layers ... and 16 attention heads')."
 
   - id: Q05
     question: "What are the three criteria the authors use to compare self-attention with recurrent and convolutional layers?"
@@ -113,7 +115,7 @@ questions:
     category: body_fact
     answerable: true
     answer: "It adds positional encodings (same dimension as the embeddings) to the input embeddings at the bottom of the encoder and decoder stacks, using sine and cosine functions of different frequencies, which the authors hypothesise helps the model attend by relative positions."
-    key_facts: ["positional encodings", "sine", "cosine", "relative positions"]
+    key_facts: ["positional encodings", ["sine", "sinusoid", "sinusoidal"], "relative positions"]
     evidence:
       - paper: attention
         pages: [6]
@@ -168,7 +170,7 @@ questions:
     category: multi_part
     answerable: true
     answer: "The Transformer adds fixed sinusoidal positional encodings to its input embeddings. H-Net learns content- and context-dependent chunk boundaries from data, with a routing module that uses the cosine similarity of adjacent representations."
-    key_facts: ["positional encodings", "sine", "cosine similarity", "context-dependent"]
+    key_facts: ["positional encodings", ["sine", "sinusoid", "sinusoidal"], "cosine similarity", "context-dependent"]
     evidence:
       - paper: attention
         pages: [6]
