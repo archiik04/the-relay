@@ -56,7 +56,7 @@ def tool_line(block: dict) -> str:
     return f"- *[{name}]* {clean(str(what))[:160]}"
 
 
-def main(path: str) -> None:
+def main(path: str, stop_before: str | None = None) -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     out = ["# The Relay: conversation history with the assistant", "",
            "Exported from the Claude desktop app (Claude Code) session for this project, unedited except that the "
@@ -98,6 +98,8 @@ def main(path: str) -> None:
                         "*(The app ran out of context and inserted this summary of the conversation so far. "
                         "It is reproduced as inserted.)*", "", body, ""]
                 continue
+            if stop_before and body.lower().startswith(stop_before.lower()):
+                break  # Archi's choice: the submitted history ends before this message
             n_user += 1
             out += [f"## Archi · {when(r.get('timestamp'))}", "", body, ""]
         else:
@@ -122,4 +124,5 @@ def main(path: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    # Optional 2nd argument: stop before the first message from Archi that starts with this text.
+    main(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
