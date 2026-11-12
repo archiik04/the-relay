@@ -55,6 +55,11 @@ class ModelResponse:
     headers: dict = field(default_factory=dict)
     error: str | None = None
     error_code: str | None = None  # e.g. "json_validate_failed" (Groq's JSON mode, reported inside a 200 stream)
+    # Filled in by the gateway (M5):
+    queue_ms: float = 0.0
+    retry_sleep_ms: float = 0.0
+    retries: int = 0
+    queue_depth: int = 0  # requests in the gateway queue when this one joined (itself included)
 
 
 class ModelClient(Protocol):

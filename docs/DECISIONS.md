@@ -285,6 +285,23 @@ Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T124111Z.jsonl
 - **Frozen anyway, by deadline and by principle.** Every sentence a user sees has a verified quote behind it, which follows the brief's "never send a wrong or embarrassing answer". The measured cost is completeness: run 2's free-text version scored 7 by the grader, partly *because* of unsupported sentences. The report shows all three runs. The hand review measures how many "wrong" grades are correct answers the grader missed.
 - **Schedule correction (Archi, 18:15 IST on 12 Nov):** submission is due **13 Nov 13:40 IST**, not in 2 days. Cut: the 20b vs 120b comparison, the stand-in as a separate server process, and gateway extras.
 
+## M5–M7: gateway, stand-in, load generator (built 2026-11-12 evening)
+- **Gateway** (`src/relay/gateway.py`): a ModelClient wrapping the provider, as designed in D0/D5.
+  - Continuous-refill buckets for RPM, TPM (at 90% of the limit) and RPD. Each call reserves prompt + max_tokens; the unused part is refunded.
+  - Immediate shedding when the estimated wait exceeds the 25 s policy deadline, or the queue (30) is full.
+  - Bounded FIFO, with the deadline re-checked when a request leaves the queue.
+  - On a 429: retry within 2 per request and a 20% global budget. A retry-after longer than the deadline is treated as the daily limit, and the gateway stops calling.
+  - It syncs with `x-ratelimit-remaining-*`. When the daily budget is gone, the reply is a **labelled passages-only answer** with no model call.
+- **Concurrency probe (Table 1):** 10 calls at once all succeeded in 626–787 ms (`concurrency-20261112T124902Z.jsonl`), so no in-flight limit was observed at 10. The headers confirm each call reserves prompt + max_tokens (78 + 64 = 142) when admitted.
+- **Stand-in** (`src/relay/standin.py`): in-process (decided under deadline), calibrated by `scripts/calibrate_standin.py` from **70 real calls**. TTFT p50 655 ms, generation p50 186 ms, 168 completion tokens, 429 in ~65 ms, 1.25% JSON rejections (`results/standin_calibration.json`).
+  - **Assumed, not measured:** the slowdown under load (+15% first-token time per call in flight above 4), and the 1% error rate.
+  - "Per-minute limit halved" halves **both** RPM and TPM without telling the gateway. TPM is the binding limit (~3 answers/min); halving RPM alone would change nothing.
+- **Load generator** (`scripts/run_load.py`): open loop. Poisson arrivals plus bursts. Times are measured from the scheduled start. Users give up after 30 s.
+- **Bug found by the first daily_exhausted run (assistant's code):** the gateway's daily counter, synced from headers, reached 0. Requests then waited in the queue for an ~86 s refill and timed out (9 of 17), instead of getting the labelled reply. Fix: if the daily counter can't refill within the deadline, reply at once. The flawed run is kept in `results/load/superseded/`.
+- **Seen in the stand-in runs:**
+  - Under overload, admitted requests wait up to the deadline (p50 17 s). **The policy deadline is what sets "fast" for admitted users** (D-open-4).
+  - The daily budget refills gradually: one full answer came back at +135 s in the daily_exhausted run.
+
 ## Resolved
 - **D-open-1 → stand-in rows have an empty `answer_grade`,** reported as "not measured". The stand-in's text is synthetic.
 - **D-open-2 → extra columns after the required ones:** `model_first_token_ms`, `model_last_token_ms`, `queue_ms`, `retry_sleep_ms`, `final_status`, `degraded`, `question_id`, and so on.

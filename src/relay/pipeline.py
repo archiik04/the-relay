@@ -225,6 +225,11 @@ class PipelineResult:
     total_ms: float = 0.0
     model_error: str | None = None
     retry_after_s: float | None = None
+    queue_ms: float = 0.0  # waiting in the gateway queue (M5)
+    retry_sleep_ms: float = 0.0  # sleeping before retries after a 429
+    retries: int = 0
+    queue_depth: int = 0  # gateway queue length when this request joined it
+    degraded: bool = False  # passages-only reply because the daily budget is gone
     drafts: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
@@ -294,6 +299,14 @@ class Pipeline:
                 continue
             if resp.status != "ok":
                 res.retry_after_s = resp.retry_after_s
+                if resp.error_code == "daily_budget_exhausted":
+                    # No model budget left today: give the passages, clearly labelled, never a guess.
+                    res.degraded = True
+                    return await self._finish(res, "degraded_passages", passages_only_reply(hits, resp.retry_after_s),
+                                              t0, send, error=resp.error)
+                if resp.error_code == "shed":
+                    return await self._finish(res, "model_rate_limited", busy_reply(resp.retry_after_s), t0, send,
+                                              error=resp.error)
                 return await self._finish(res, f"model_{resp.status}", REFUSAL_MODEL, t0, send, error=resp.error)
             res.drafts.append(resp.text)
             draft = parse_json(resp.text)
@@ -322,6 +335,12 @@ class Pipeline:
         return await self._finish(res, draft["status"], reply, t0, send)
 
     def _account(self, res: PipelineResult, resp: ModelResponse, since) -> None:
+        res.queue_ms += resp.queue_ms
+        res.retry_sleep_ms += resp.retry_sleep_ms
+        res.retries += resp.retries
+        res.queue_depth = max(res.queue_depth, resp.queue_depth)
+        if resp.error_code in ("shed", "daily_budget_exhausted", "queue_deadline"):
+            return  # the gateway answered locally: no model call was made
         res.model_calls += 1
         res.tokens_in += resp.prompt_tokens
         res.tokens_out += resp.completion_tokens
@@ -341,6 +360,23 @@ class Pipeline:
             await send(reply)
         res.total_ms = round((time.perf_counter() - t0) * 1000, 1)
         return res
+
+
+def passages_only_reply(hits, retry_after_s: float | None) -> str:
+    """The last rung of the degradation ladder: no model call, no generated text, clearly labelled."""
+    when = f" in about {round(retry_after_s / 60)} minutes" if retry_after_s and retry_after_s >= 60 else " later"
+    lines = [f"[Limited answer] Today's answering budget is used up, so I can't write a checked answer now. "
+             f"Full answers resume{when}. These are the most relevant passages I found; they may not answer "
+             "your question:"]
+    for h in hits[:3]:
+        snippet = " ".join(h.chunk.text.split()[:45])
+        lines.append(f"- {h.chunk.citation} {h.chunk.section}: \"{snippet}…\"")
+    return "\n".join(lines)
+
+
+def busy_reply(retry_after_s: float | None) -> str:
+    wait = f"in about {max(1, round(retry_after_s))} seconds" if retry_after_s else "shortly"
+    return f"Too many questions are waiting right now, so I'd rather say so than make you wait. Please try again {wait}."
 
 
 NOT_IN_PAPERS = "The three papers don't say this, so I won't guess."
