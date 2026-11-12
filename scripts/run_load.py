@@ -134,7 +134,7 @@ if __name__ == "__main__":
     p.add_argument("--duration", type=float, default=0.0, help="seconds of Poisson arrivals")
     p.add_argument("--burst", type=int, default=0, help="requests all at t=0")
     p.add_argument("--patience", type=float, default=30.0, help="seconds a person waits for the reply to start")
-    p.add_argument("--deadline", type=float, default=25.0, help="gateway policy deadline (D5)")
+    p.add_argument("--deadline", type=float, default=10.0, help="gateway policy deadline (D5, D8: 10 s)")
     p.add_argument("--max-queue", type=int, default=30)
     p.add_argument("--halve-rpm-at", type=float, default=None,
                    help="stand-in: halve its per-minute limits (RPM and TPM) at this second")

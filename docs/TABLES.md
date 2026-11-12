@@ -4,21 +4,21 @@
 
 | Scenario | Real or stand-in | Requests sent | Duration (s) | Offered rate (per min) | First token p50 / p95 / p99 (ms) | Total time p50 / p95 / p99 (ms) |
 |---|---|---|---|---|---|---|
-| burst | stand-in | 12 | 7 | 12 at once | 1,201 / 6,822 / 6,822 (n=4) | 1,201 / 6,822 / 6,822 (n=4) |
-| daily_exhausted | stand-in | 17 | 155 | 6.6 | 29 / 2,006 / 2,006 (n=17) | 29 / 2,006 / 2,006 (n=17) |
-| overload | stand-in | 62 | 299 | 12.6 | 16,984 / 24,076 / 24,076 (n=18) | 16,984 / 24,076 / 24,076 (n=18) |
-| rpm_halved | stand-in | 20 | 313 | 4.1 | 2,008 / 24,716 / 24,716 (n=16) | 2,008 / 24,716 / 24,716 (n=16) |
-| steady | stand-in | 17 | 233 | 4.4 | 1,272 / 18,957 / 18,957 (n=16) | 1,272 / 18,957 / 18,957 (n=16) |
+| burst | stand-in | 12 | 2 | 12 at once | 1,187 / 1,981 / 1,981 (n=3) | 1,187 / 1,981 / 1,981 (n=3) |
+| daily_exhausted | stand-in | 17 | 155 | 6.6 | 38 / 2,011 / 2,011 (n=17) | 38 / 2,011 / 2,011 (n=17) |
+| overload | stand-in | 62 | 304 | 12.6 | 6,531 / 10,762 / 10,762 (n=19) | 6,531 / 10,762 / 10,762 (n=19) |
+| rpm_halved | stand-in | 20 | 296 | 4.1 | 1,536 / 6,914 / 6,914 (n=14) | 1,536 / 6,914 / 6,914 (n=14) |
+| steady | stand-in | 17 | 236 | 4.4 | 1,577 / 5,076 / 5,076 (n=15) | 1,577 / 5,076 / 5,076 (n=15) |
 
 ## Table 2b: Outcomes
 
 | Scenario | Real or stand-in | Succeeded % | Rate-limited % | Timed out or given up % | Retries per request | Peak queue length | Tokens per answer | Cost per 1,000 answers |
 |---|---|---|---|---|---|---|---|---|
-| burst | stand-in | 33.3% | 66.7% | 0.0% | 0.00 | 1 | 1,848 | $0.16 at list price ($0 on free tier) |
+| burst | stand-in | 25.0% | 75.0% | 0.0% | 0.00 | 1 | 1,892 | $0.17 at list price ($0 on free tier) |
 | daily_exhausted | stand-in | 35.3% | 64.7% | 0.0% | 0.00 | 1 | 2,102 | $0.20 at list price ($0 on free tier) |
-| overload | stand-in | 29.0% | 67.7% | 1.6% | 0.00 | 2 | 2,118 | $0.21 at list price ($0 on free tier) |
-| rpm_halved | stand-in | 80.0% | 20.0% | 0.0% | 0.10 | 2 | 2,080 | $0.20 at list price ($0 on free tier) |
-| steady | stand-in | 94.1% | 5.9% | 0.0% | 0.00 | 1 | 2,106 | $0.20 at list price ($0 on free tier) |
+| overload | stand-in | 30.6% | 67.7% | 0.0% | 0.00 | 1 | 2,030 | $0.20 at list price ($0 on free tier) |
+| rpm_halved | stand-in | 70.0% | 30.0% | 0.0% | 0.10 | 1 | 2,070 | $0.19 at list price ($0 on free tier) |
+| steady | stand-in | 88.2% | 11.8% | 0.0% | 0.00 | 1 | 2,097 | $0.20 at list price ($0 on free tier) |
 
 ## Table 3: Retrieval settings
 

@@ -298,9 +298,31 @@ Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T124111Z.jsonl
   - "Per-minute limit halved" halves **both** RPM and TPM without telling the gateway. TPM is the binding limit (~3 answers/min); halving RPM alone would change nothing.
 - **Load generator** (`scripts/run_load.py`): open loop. Poisson arrivals plus bursts. Times are measured from the scheduled start. Users give up after 30 s.
 - **Bug found by the first daily_exhausted run (assistant's code):** the gateway's daily counter, synced from headers, reached 0. Requests then waited in the queue for an ~86 s refill and timed out (9 of 17), instead of getting the labelled reply. Fix: if the daily counter can't refill within the deadline, reply at once. The flawed run is kept in `results/load/superseded/`.
+- **Second bug, found in the limits-halved table (assistant's code):** a request that was retried after a 429 and *then* shed lost its retry count. The table showed 0.00 retries/request while the gateway had retried twice. Fixed (every early gateway reply carries its retry count) and re-run; the table now shows 0.10. The flawed run is in `results/load/superseded/retry-count-bug/`.
+- **Peak queue length is 1 in every 10 s run, by design.** One answer needs ~2,500 tokens and tokens/min refill at ~120/s, so each answer occupies ~21 s of budget. With a 10 s deadline, a second request can never be admitted behind the first.
 - **Seen in the stand-in runs:**
   - Under overload, admitted requests wait up to the deadline (p50 17 s). **The policy deadline is what sets "fast" for admitted users** (D-open-4).
   - The daily budget refills gradually: one full answer came back at +135 s in the daily_exhausted run.
+
+## D8: What "fast" means: a 10 s policy deadline
+**Status:** Accepted (2026-11-12) · **Who:** Archi decided; the assistant laid out the trade-off and agreed
+
+- **Definition:** a reply starts within ~1 s when the system isn't busy (measured p50 ~0.9 s). **No admitted request waits more than 10 s in the gateway queue**, so the reply starts within ~12 s including the model call. Anyone we can't serve in time is told **immediately** ("busy, try again in about N s").
+- **Archi's reasoning:** with 25 s we admit more people, but they can wait up to 25 s (measured p50 17 s under overload). With 10 s fewer are admitted and more get "busy", but nobody admitted waits more than 10 s. Follows D4: fast and honest beats slow and silent.
+- **Cost:** a lower success % under burst and overload in Table 2b. That's the intended trade-off, not a regression. Fewer 429 retries, too: a retry only happens if the deadline still allows it.
+- The deadline is set below the simulated user patience (30 s), so people should be told "busy" before they would give up.
+- The stand-in runs at 25 s are kept in `results/load/superseded/deadline25/` for comparison.
+- **Measured, 25 s vs 10 s, same arrivals (same seed), stand-in:**
+
+  | Scenario | Answered | Answers per 1K tokens | First-token p50 / p95 (ms) |
+  |---|---|---|---|
+  | overload (62 sent) | 18 → 19 | 0.472 → 0.493 | 16,984 / 24,076 → 6,531 / 10,762 |
+  | steady (17) | 16 → 15 | 0.475 → 0.477 | 1,272 / 18,957 → 1,577 / 5,076 |
+  | burst (12) | 4 → 3 | 0.541 → 0.528 | 1,201 / 6,822 → 1,187 / 1,981 |
+  | limits halved (20) | 16 → 14 | 0.481 → 0.483 | 2,008 / 24,716 → 1,577 / 6,922 |
+  | daily exhausted (17) | 6 → 6 | same | same |
+
+  **The prediction held.** Throughput is capped by the token limit (~3 answers/min), so under sustained overload the 10 s deadline answered as many people at well under half the wait, and nobody gave up (1 did at 25 s). The real cost is 1–2 fewer answers in burst, steady and limits-halved, where those people got an instant "busy" instead of a long wait. Answers per 1K tokens is unchanged.
 
 ## Resolved
 - **D-open-1 → stand-in rows have an empty `answer_grade`,** reported as "not measured". The stand-in's text is synthetic.

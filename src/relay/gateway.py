@@ -76,7 +76,7 @@ class _Waiter:
 
 class Gateway:
     def __init__(self, client: ModelClient, limits: Limits = Limits(), *, max_queue: int = 30,
-                 deadline_s: float = 30.0, max_retries: int = 2, retry_budget_ratio: float = 0.2,
+                 deadline_s: float = 10.0, max_retries: int = 2, retry_budget_ratio: float = 0.2,
                  tpm_headroom: float = 0.9):
         self.client = client
         self.name = client.name
@@ -107,32 +107,36 @@ class Gateway:
         deadline = time.monotonic() + self.deadline_s
         self.requests += 1
         queue_s = retry_sleep_s = 0.0
-        retries = 0
+        retries = depth = 0
+
+        def local(code: str, **kw) -> ModelResponse:
+            # Found in the limits-halved run: a request retried and THEN shed lost its retry count.
+            r = self._local(t_start, code, queue_s=queue_s, **kw)
+            r.retries, r.retry_sleep_ms, r.queue_depth = retries, round(retry_sleep_s * 1000, 1), depth
+            return r
+
         while True:
             # 1. Daily budget gone: say so at once.
             if time.monotonic() < self.blocked_until:
-                return self._local(t_start, "daily_budget_exhausted",
-                                   retry_after=self.blocked_until - time.monotonic(), queue_s=queue_s)
+                return local("daily_budget_exhausted", retry_after=self.blocked_until - time.monotonic())
             # Our own daily counter (synced from the provider's headers) can't refill in time.
             # Found in the first daily_exhausted run: without this check, requests waited in the
             # queue for a daily refill that takes ~86 s and timed out, instead of a labelled reply.
             daily_wait = self.rpd.wait_for(1 + len(self.queue), time.monotonic())
             if daily_wait > self.deadline_s:
-                return self._local(t_start, "daily_budget_exhausted", retry_after=daily_wait, queue_s=queue_s)
+                return local("daily_budget_exhausted", retry_after=daily_wait)
             # 2. Admission.
             wait = self.estimated_wait(est)
             if len(self.queue) >= self.max_queue or time.monotonic() + wait > deadline:
                 self.shed += 1
-                return self._local(t_start, "shed", retry_after=wait, queue_s=queue_s)
+                return local("shed", retry_after=wait)
             # 3. Queue.
             q0 = time.monotonic()
             depth = len(self.queue) + 1
             admitted = await self._acquire(est, deadline)
             queue_s += time.monotonic() - q0
             if not admitted:
-                r = self._local(t_start, "queue_deadline", status="timeout", queue_s=queue_s)
-                r.queue_depth = depth
-                return r
+                return local("queue_deadline", status="timeout")
             # 4. Call.
             resp = await self.client.complete(req)
             self._sync(resp, est)

@@ -51,6 +51,20 @@ def test_retry_after_429_then_success():
     assert r.status == "ok" and r.retries == 1 and r.retry_sleep_ms >= 50
 
 
+def test_retry_count_survives_when_the_retry_is_then_shed():
+    async def go():
+        g = Gateway(Scripted(("429", 0.05)), Limits(rpm=1000, tpm=600, rpd=1000), deadline_s=1, tpm_headroom=1.0)
+        g.tpm.level = 600
+
+        async def drain_after_429():  # after the 429 the provider's budget is empty: the retry gets shed
+            await asyncio.sleep(0.01)
+            g.tpm.level = 0
+        asyncio.create_task(drain_after_429())
+        return await g.complete(req())
+    r = asyncio.run(go())
+    assert r.error_code == "shed" and r.retries == 1 and r.retry_sleep_ms >= 50
+
+
 def test_long_retry_after_means_daily_budget_and_no_more_calls():
     async def go():
         client = Scripted(("429", 3600))
