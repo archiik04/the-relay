@@ -80,8 +80,10 @@ def inline(text: str) -> str:
     t = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", t)
     t = re.sub(r"(?<![\w*])\*([^*\n]+)\*(?![\w*])", r"<i>\1</i>", t)
     # Placeholders stand out so nothing unfinished is submitted by accident.
-    t = re.sub(r"\[(ARCHI|TOMORROW)([^\]]*)\]", lambda m: f'<font color="{FLAG.hexval()}"><b>[{m.group(1)}{m.group(2)}]</b></font>', t)
-    t = re.sub(r"(github\.com/[\w./-]+)", r'<link href="https://\1" color="#1F4E79">\1</link>', t)
+    # Markdown links [text](https://...) become clickable.
+    t = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<link href="\2" color="#1F4E79"><u>\1</u></link>', t)
+    t = re.sub(r"\[(ARCHI|TOMORROW|DRIVE LINK)([^\]]*)\]",
+               lambda m: f'<font color="{FLAG.hexval()}"><b>[{m.group(1)}{m.group(2)}]</b></font>', t)
     return t
 
 
@@ -220,8 +222,6 @@ def main() -> None:
     build(parse_markdown(report_md), OUT, intro + parse_tables(tables_md, width))
     total = len(PdfReader(str(OUT)).pages)
     print(f"{OUT}: {total} pages ({pages} write-up + {total - pages} tables)")
-    if TRANSCRIPT_MD.exists():
-        attach_transcript(total)
 
 
 def attach_transcript(first_page: int) -> None:
