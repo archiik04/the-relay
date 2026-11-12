@@ -276,6 +276,7 @@ Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T123207Z.jsonl
   - Q01: `factuality` | `linguistic quality`; `before audio tokens` | `prefix`. The p.3 and pp.15–16 gold pages word it differently.
   - Q07: `sine` and `cosine` merged into one fact, `sine` | `sinusoid` | `sinusoidal`. Q12 gets the same alternatives for `sine`.
   - Q04: pp.13–14 added. Section 3.4 prose states the same 16 heads / 6 layers.
+- **B1 edit 2 (2026-11-12, after the hand review; Archi: "fix it"):** Q10's key facts required `mean pooling` and `cross-attention`, which the question never asks for. Now: `direct selection` | `boundary-marked` (the strategy) and `retained` | `kept` | `keeps` | `discarded` (the rule). Both are on p.6. Made before the Table 3 runs, so all three settings are graded on the same question. Run 4's Q10 stays `wrong` (its answer never states the rule), which matches Archi's hand verdict.
 - **Grader rules this benchmark needs:** numbers match as whole numbers (Q04 `6` ≠ `16`); short key facts match as whole words (Q11 `key`); the false-premise question (Q18) is graded on whether the answer challenges the premise, not on key-fact matching alone.
 
 ## M4 final: pipeline frozen at run 4's version (2026-11-12)

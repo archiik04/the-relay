@@ -148,11 +148,11 @@ questions:
     category: appendix
     answerable: true
     answer: "Direct selection of boundary-marked vectors: vectors whose boundary indicator is 1 are kept and the rest are discarded. Appendix E.1 compares it with max/mean pooling and cross-attention."
-    key_facts: ["boundary", "mean pooling", "cross-attention"]
+    key_facts: [["direct selection", "boundary-marked"], ["retained", "kept", "keeps", "discarded"]]
     evidence:
       - paper: hnet
         pages: [6, 36]
-    notes: "Section 2.2.1 Downsampler (p.6) and Appendix E.1 (p.36). The selection rule is also in the main text, so this is not appendix-only."
+    notes: "Section 2.2.1 Downsampler (p.6) and Appendix E.1 (p.36). The selection rule is also in the main text, so this is not appendix-only. B1 edit 2 (2026-11-12, after the hand review): key facts were 'boundary', 'mean pooling', 'cross-attention', but the question never asks for the alternatives compared. They now match what it asks: the strategy (direct selection of boundary-marked vectors) and the rule (b_t = 1 retained, b_t = 0 discarded)."
 
   - id: Q11
     question: "How does H-Net preserve autoregressive causality during both training and inference, and what state does its routing module need to retain during inference?"
