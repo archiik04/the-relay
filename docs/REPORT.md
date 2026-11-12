@@ -1,5 +1,4 @@
 # The Relay: write-up
-Archi Kanungo · Code, raw results (`results/results.csv`) and decision log: github.com/archiik04/the-relay
 
 ## 1. What I built and why
 A Python assistant that answers only from the three pinned papers (exact arXiv versions, stamp-checked):
