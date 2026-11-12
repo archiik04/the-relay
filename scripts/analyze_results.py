@@ -46,14 +46,63 @@ def num(r, k) -> float | None:
     return float(r[k]) if r.get(k) not in (None, "") else None
 
 
+def _ts(r) -> float:
+    return datetime.fromisoformat(r["start_time"]).timestamp()
+
+
+def _recovery(rs: list[dict]) -> tuple[int, float | None, float | None]:
+    """(successes before the first 429, seconds from that 429 to the next success, 429 response ms)."""
+    rs = sorted(rs, key=_ts)
+    first = next((i for i, r in enumerate(rs) if r["status"] == "rate_limited"), None)
+    if first is None:
+        return len(rs), None, None
+    # Same model only: the RPM probe also sends one call to another model (limits are per model).
+    model = rs[first]["model"]
+    nxt = next((r for r in rs[first + 1:] if r["status"] == "ok" and r["model"] == model), None)
+    return first, (_ts(nxt) - _ts(rs[first])) if nxt else None, float(rs[first]["total_ms"])
+
+
+def table1(groups) -> list[str]:
+    """Table 1 from the probe rows (scenario probe-*), i.e. from results.csv like every other table."""
+    probes = [r for (sc, _), rs in groups.items() if sc.startswith("probe-") for r in rs]
+    if not probes:
+        return []
+    by = {sc: rs for (sc, _), rs in groups.items()}
+    def mode(col):
+        vals = [r[col] for r in probes if r[col]]
+        return max(set(vals), key=vals.count) if vals else None
+    rpm_ok, rpm_rec, r429_ms = _recovery(by.get("probe-rpm", []))
+    tpm_ok, tpm_rec, _ = _recovery(by.get("probe-tpm", []))
+    conc = by.get("probe-concurrency", [])
+    conc_ok = sum(1 for r in conc if r["status"] == "ok")
+    conc_ms = [float(r["total_ms"]) for r in conc]
+    ras = sorted({r["retry_after_s"] for r in probes if r["status"] == "rate_limited" and r["retry_after_s"]}, key=float)
+    n429 = sum(1 for r in probes if r["status"] == "rate_limited")
+    return [
+        "## Table 1: Limits found in the real service (computed from probe-* rows)", "",
+        "| Limit | Value found | How found | Confidence |", "|---|---|---|---|",
+        f"| Requests per minute | {rpm_ok} OK, then a 429 | probe-rpm: tiny calls back to back until the first 429 | high |",
+        f"| Tokens per minute | {mode('rl_limit_tokens')} (header); 429 after {tpm_ok} large calls | "
+        "x-ratelimit-limit-tokens on every response + probe-tpm | high |",
+        f"| Requests per day | {mode('rl_limit_requests')} (header) | x-ratelimit-limit-requests; remaining drops by 1 per call | high |",
+        "| Tokens per day | not observed (documented 200K) | never reached; no header reports it | low |",
+        f"| Requests in flight at once | {conc_ok} of {len(conc)} succeeded at once ({fmt(min(conc_ms) if conc_ms else None)}–"
+        f"{fmt(max(conc_ms) if conc_ms else None)} ms) | probe-concurrency | medium (only 10 tried) |",
+        f"| What it returns at a limit | HTTP 429 in {fmt(r429_ms)} ms, retry-after {', '.join(ras)} s ({n429} 429s seen) | "
+        "probe rows with status rate_limited | high |",
+        f"| Time until it recovers | {tpm_rec if tpm_rec is None else round(tpm_rec * 1000):,} ms (TPM), "
+        f"{rpm_rec if rpm_rec is None else round(rpm_rec * 1000):,} ms (RPM) after the first 429 | "
+        "next successful call after the 429 | medium (one episode each) |", ""]
+
+
 def main(args) -> None:
     rows = list(csv.DictReader(open(args.csv, encoding="utf-8")))
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for r in rows:
         groups[(r["scenario"], r["source"])].append(r)
-    load = {k: v for k, v in groups.items() if not k[0].startswith("retrieval-")}
+    load = {k: v for k, v in groups.items() if not k[0].startswith(("retrieval-", "probe-"))}
     retr = {k: v for k, v in groups.items() if k[0].startswith("retrieval-")}
-    out: list[str] = []
+    out: list[str] = table1(groups)
 
     def replied(r):
         return r["status"] == "ok" or r["degraded"] == "1"

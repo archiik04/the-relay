@@ -247,6 +247,39 @@ class Gateway:
         self._wake.set()
 
 
+class NaiveRetryClient:
+    """What a naive client does, for the retry experiment (report section 6). NOT used in production.
+
+    No admission control, no queue, no token buckets: every request goes straight to the
+    provider, and every 429 is retried after a short fixed pause (ignoring retry-after),
+    up to `max_retries` times.
+    """
+
+    def __init__(self, client: ModelClient, max_retries: int = 5, pause_s: float = 1.0):
+        self.client = client
+        self.name = client.name
+        self.max_retries = max_retries
+        self.pause_s = pause_s
+        self.provider_calls = 0
+        self.retries = 0
+
+    async def complete(self, req: ModelRequest) -> ModelResponse:
+        t_start = time.perf_counter()
+        retries = 0
+        while True:
+            self.provider_calls += 1
+            resp = await self.client.complete(req)
+            if resp.status != "rate_limited" or retries >= self.max_retries:
+                break
+            retries += 1
+            self.retries += 1
+            await asyncio.sleep(self.pause_s)
+        resp.t_start = t_start
+        resp.retries = retries
+        resp.retry_sleep_ms = round(retries * self.pause_s * 1000, 1)
+        return resp
+
+
 def _num(v) -> float | None:
     try:
         return float(v)

@@ -312,6 +312,12 @@ File: `results/review/hand-review-run4-archi.md` (run 4, the frozen pipeline).
 - **Correct:** grader 4/18 (22.2%), Archi 3/18 (16.7%). **Refusals:** 5/6 by both. All near-miss and off-topic questions were refused. The false premise was refused generically instead of being challenged.
 - **What this says about the design:** the next step would be a support check per claim. That's either a second model call (option B in P1, which halves throughput under the TPM limit) or a stricter local check, e.g. requiring each claim's key terms to appear in its quote. Not built (deadline); named in the report as the main weakness.
 
+## Retry experiment (report section 6) (measured 2026-11-12)
+- **Hypothesis (assistant's): blind retries make overload worse. Rejected on this provider.** Same overload arrivals (62 requests, stand-in). With `NaiveRetryClient` (no gateway; every 429 retried after 1 s, up to 5 times): 21 answered vs 19 with the gateway, first-token p50 / p95 2,656 / 6,372 ms vs 6,531 / 10,762 ms. It made 297 provider calls (234 retries) vs ~62.
+- **Why:** a 429 is cheap. Stand-in: 65 ms, no budget used. **Real Groq: a 429 does not consume daily requests.** In the probe headers, remaining requests stayed at 970 through the RPM 429 and fell to 969 on the next success; in the TPM probe, 967 → 966 (one episode each, medium confidence). Our gateway is conservative: 90% TPM headroom and a characters ÷ 4 estimate that overstates the prompt. That cost ~2 answers in 5 minutes of overload.
+- **The case where retrying made things worse is the model-level redraft** (real Groq, run 1). Q02, Q03 and Q10 each paid a second full call: request totals of 4,835 / 2,189 / 4,019 tokens, ~2,500 reserved per call. All three still ended unverified, and in Q10 the model returned the **identical** draft. Under an 8K tokens/min limit, one wasted reservation is ~21 s of budget, about one other person's answer. Of 5 redrafts across runs 1–4, 2 helped (run 3 Q12, run 4 Q08). Run 1's failures were partly caused by the quote-check bug (U+2011 hyphens).
+- **Lesson:** retry what is temporary (a 429 says when); don't blindly retry what is deterministic (the same prompt gives the same failure). A redraft should change something, e.g. tell the model exactly which quote failed and where it actually appears. That is what `fix_citations` now does without any call.
+
 ## D8: What "fast" means: a 10 s policy deadline
 **Status:** Accepted (2026-11-12) · **Who:** Archi decided; the assistant laid out the trade-off and agreed
 

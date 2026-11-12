@@ -2,6 +2,7 @@
 
 Inputs:
   - every load run in results/load/*.jsonl (smoke tests live in results/load/smoke/ and are skipped);
+  - every Groq probe in results/probe/*.jsonl (scenario "probe-<phase>"), so Table 1 is computable too;
   - the benchmark runs named with --table3 (the retrieval settings compared in Table 3).
     Their scenario is "retrieval-<mode>", source "real".
 
@@ -16,7 +17,7 @@ import json
 from pathlib import Path
 
 from relay.config import get_settings
-from relay.results import COLUMNS, to_row
+from relay.results import COLUMNS, probe_row, to_row
 
 
 def main(args) -> None:
@@ -25,6 +26,13 @@ def main(args) -> None:
     for path in sorted(glob.glob(str(root / "load" / "*.jsonl"))):
         for line in open(path, encoding="utf-8"):
             rows.append(to_row(json.loads(line)))
+    # Real-service probes (Table 1). Summary lines (e.g. recovery_summary) are not requests.
+    for path in sorted(glob.glob(str(root / "probe" / "*.jsonl"))):
+        stem = Path(path).stem
+        for i, line in enumerate(open(path, encoding="utf-8")):
+            rec = json.loads(line)
+            if "status" in rec and "total_ms" in rec:
+                rows.append(probe_row(rec, f"{stem}-{i:03d}"))
     for path in args.table3:
         stem = Path(path).stem
         for line in open(path, encoding="utf-8"):

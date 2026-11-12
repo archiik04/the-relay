@@ -7,7 +7,10 @@ Required columns first, in the brief's order, then our extras (D-open-2 resolved
 REQUIRED = ["request_id", "scenario", "source", "start_time", "first_token_ms", "total_ms", "status", "retries",
             "tokens_in", "tokens_out", "retrieval_setting", "answer_grade"]
 EXTRA = ["question_id", "final_status", "degraded", "gave_up", "model_first_token_ms", "model_last_token_ms",
-         "queue_ms", "retry_sleep_ms", "queue_depth", "model_calls", "redrafts", "retrieval_ms", "model"]
+         "queue_ms", "retry_sleep_ms", "queue_depth", "model_calls", "redrafts", "retrieval_ms", "model",
+         # Probe rows only (Table 1 is computed from these): the provider's own rate-limit headers.
+         "http_status", "retry_after_s", "rl_limit_requests", "rl_limit_tokens", "rl_remaining_requests",
+         "rl_remaining_tokens"]
 COLUMNS = REQUIRED + EXTRA
 
 OK_STATUSES = {"answered", "not_in_papers", "premise_false", "unverified"}
@@ -52,4 +55,35 @@ def to_row(rec: dict) -> dict:
         "retrieval_ms": rec.get("retrieval_ms"),
         "model": rec.get("model", ""),
     }
+    row.update({c: "" for c in COLUMNS if c not in row})
     return {k: ("" if v is None else v) for k, v in row.items()}
+
+
+def probe_row(rec: dict, request_id: str) -> dict:
+    """A Groq probe request (M3/M5 probes) as a results.csv row, so Table 1 is computable from the file."""
+    code = rec.get("status")
+    h = rec.get("headers") or {}
+    u = rec.get("usage") or {}
+    row = {c: "" for c in COLUMNS}
+    row.update({
+        "request_id": request_id,
+        "scenario": f"probe-{rec.get('phase', 'unknown')}",
+        "source": "real",
+        "start_time": rec.get("start_utc", ""),
+        "first_token_ms": rec.get("first_content_ms", "") if rec.get("first_content_ms") is not None else "",
+        "total_ms": rec.get("total_ms", ""),
+        "status": "ok" if code == 200 else "rate_limited" if code == 429 else "timeout" if code is None else "error",
+        "retries": 0,
+        "tokens_in": u.get("prompt_tokens", 0),
+        "tokens_out": u.get("completion_tokens", 0),
+        "question_id": rec.get("label", ""),
+        "final_status": f"http_{code}",
+        "model": rec.get("model", ""),
+        "http_status": code if code is not None else "",
+        "retry_after_s": h.get("retry-after", ""),
+        "rl_limit_requests": h.get("x-ratelimit-limit-requests", ""),
+        "rl_limit_tokens": h.get("x-ratelimit-limit-tokens", ""),
+        "rl_remaining_requests": h.get("x-ratelimit-remaining-requests", ""),
+        "rl_remaining_tokens": h.get("x-ratelimit-remaining-tokens", ""),
+    })
+    return row

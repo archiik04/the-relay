@@ -28,7 +28,7 @@ from datetime import datetime, timedelta, timezone
 
 from relay.benchmark import load
 from relay.config import get_settings
-from relay.gateway import Gateway, Limits
+from relay.gateway import Gateway, Limits, NaiveRetryClient
 from relay.grader import grade
 from relay.llm import GroqClient
 from relay.pipeline import Pipeline
@@ -62,7 +62,11 @@ async def main(args) -> None:
     else:
         standin = StandIn(StandInConfig(rpd_remaining=args.rpd_remaining, seed=args.seed))
         provider = standin
-    gateway = Gateway(provider, Limits(), deadline_s=args.deadline, max_queue=args.max_queue)
+    if args.naive_retries:  # retry experiment: no gateway, retry every 429 after 1 s (report section 6)
+        gateway = NaiveRetryClient(provider)
+        gateway.peak_queue = gateway.shed = 0
+    else:
+        gateway = Gateway(provider, Limits(), deadline_s=args.deadline, max_queue=args.max_queue)
     pipeline = Pipeline(gateway, retriever)
 
     offsets = schedule(args, rng)
@@ -123,7 +127,9 @@ async def main(args) -> None:
     by: dict = {}
     for r in records:
         by[r["final_status"]] = by.get(r["final_status"], 0) + 1
-    print(f"done: {by} peak_queue={gateway.peak_queue} shed={gateway.shed} gateway_retries={gateway.retries}")
+    print(f"done: {by} peak_queue={gateway.peak_queue} shed={gateway.shed} gateway_retries={gateway.retries}"
+          + (f" provider_calls={gateway.provider_calls}" if args.naive_retries else "")
+          + (f" provider_calls={standin.calls}" if standin is not None else ""))
 
 
 if __name__ == "__main__":
@@ -142,4 +148,5 @@ if __name__ == "__main__":
     p.add_argument("--mode", default="hybrid", choices=["bm25", "dense", "hybrid"])
     p.add_argument("--model", default="openai/gpt-oss-20b")
     p.add_argument("--seed", type=int, default=7)
+    p.add_argument("--naive-retries", action="store_true", help="experiment: bypass the gateway, retry 429s blindly")
     asyncio.run(main(p.parse_args()))
