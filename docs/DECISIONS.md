@@ -304,6 +304,13 @@ Raw: `results/answers/answers-gpt-oss-20b-t384-o32-hybrid-20261112T124111Z.jsonl
   - Under overload, admitted requests wait up to the deadline (p50 17 s). **The policy deadline is what sets "fast" for admitted users** (D-open-4).
   - The daily budget refills gradually: one full answer came back at +135 s in the daily_exhausted run.
 
+## Hand review of the final pipeline (Archi, 2026-11-12)
+File: `results/review/hand-review-run4-archi.md` (run 4, the frozen pipeline).
+- **Unsupported-claim rate: 50.0% (10 of 20 claims).** Half the claims say more than their verbatim quote. This is exactly the gap Archi predicted in P1: the check proves the quote is real, not that it supports the claim. Typical overreach adds a mechanism or detail from nearby text: Q01 "multi-stream", Q11 "key **and value**", Q08 "restores the original length".
+- **Grader agrees with Archi on 13/18 (72.2%).** 2 false negatives (Q04 number words, Q06 word form) and 3 false positives (Q01, Q08, Q11: key facts present but a claim unsupported). No grader change after seeing the answers (that would tune the grader to the outputs). The report gives both numbers.
+- **Correct:** grader 4/18 (22.2%), Archi 3/18 (16.7%). **Refusals:** 5/6 by both. All near-miss and off-topic questions were refused. The false premise was refused generically instead of being challenged.
+- **What this says about the design:** the next step would be a support check per claim. That's either a second model call (option B in P1, which halves throughput under the TPM limit) or a stricter local check, e.g. requiring each claim's key terms to appear in its quote. Not built (deadline); named in the report as the main weakness.
+
 ## D8: What "fast" means: a 10 s policy deadline
 **Status:** Accepted (2026-11-12) · **Who:** Archi decided; the assistant laid out the trade-off and agreed
 
