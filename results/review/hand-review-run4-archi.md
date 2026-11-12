@@ -20,8 +20,10 @@ Labels below are Archi's, transcribed from the completed review sheet; reasons s
 | Q13–Q17 | refused_correctly | (no claims) | refused_correctly | Correct refusals |
 | Q18 | wrong | (no claims) | wrong | Generic refusal; should say the Transformer uses no recurrence or convolution (status should be premise_false) |
 
-Note: for Q08, Q11 and Q18 the sheet's "Agree with grade?" box and the written conclusion differ;
-the verdict column uses Archi's written conclusion (to be confirmed by Archi).
+Corrections confirmed by Archi (the sheet's "Agree with grade?" box had disagreed with the written conclusion):
+- Q08: Agree = **No**, final judgment **wrong**: claim 3 says the decoder restores the original sequence length, but its quotation doesn't establish that.
+- Q11: Agree = **No**, final judgment **wrong**: the answer says the routing module retains both key and value, while the evidence specifies the most recent token's key.
+- Q18: Agree = **Yes**, final judgment **wrong**: the grader correctly marked it wrong; the response refuses generically instead of correcting the false premise.
 
 ## Summary (computed from the table above)
 - **Claims: 20 in total, 10 supported by their own quote → unsupported-claim rate 50.0% (10/20).**
