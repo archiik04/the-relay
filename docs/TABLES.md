@@ -16,26 +16,32 @@
 
 | Scenario | Real or stand-in | Requests sent | Duration (s) | Offered rate (per min) | First token p50 / p95 / p99 (ms) | Total time p50 / p95 / p99 (ms) |
 |---|---|---|---|---|---|---|
+| burst | real | 8 | 1 | 8 at once | 1,053 / 1,388 / 1,388 (n=2) | 1,053 / 1,388 / 1,388 (n=2) |
 | burst | stand-in | 12 | 2 | 12 at once | 1,187 / 1,981 / 1,981 (n=3) | 1,187 / 1,981 / 1,981 (n=3) |
 | daily_exhausted | stand-in | 17 | 155 | 6.6 | 38 / 2,011 / 2,011 (n=17) | 38 / 2,011 / 2,011 (n=17) |
 | overload | stand-in | 62 | 304 | 12.6 | 6,531 / 10,762 / 10,762 (n=19) | 6,531 / 10,762 / 10,762 (n=19) |
 | overload_naive_retry | stand-in | 62 | 299 | 12.6 | 2,656 / 6,372 / 6,678 (n=21) | 2,656 / 6,372 / 6,678 (n=21) |
 | rpm_halved | stand-in | 20 | 296 | 4.1 | 1,536 / 6,914 / 6,914 (n=14) | 1,536 / 6,914 / 6,914 (n=14) |
+| steady | real | 17 | 310 | 3.3 | 777 / 7,137 / 7,137 (n=16) | 777 / 7,137 / 7,137 (n=16) |
 | steady | stand-in | 17 | 236 | 4.4 | 1,577 / 5,076 / 5,076 (n=15) | 1,577 / 5,076 / 5,076 (n=15) |
 
 ## Table 2b: Outcomes
 
 | Scenario | Real or stand-in | Succeeded % | Rate-limited % | Timed out or given up % | Retries per request | Peak queue length | Tokens per answer | Cost per 1,000 answers |
 |---|---|---|---|---|---|---|---|---|
+| burst | real | 25.0% | 75.0% | 0.0% | 0.00 | 2 | 1,860 | $0.17 at list price ($0 on free tier) |
 | burst | stand-in | 25.0% | 75.0% | 0.0% | 0.00 | 1 | 1,892 | $0.17 at list price ($0 on free tier) |
 | daily_exhausted | stand-in | 35.3% | 64.7% | 0.0% | 0.00 | 1 | 2,102 | $0.20 at list price ($0 on free tier) |
 | overload | stand-in | 30.6% | 67.7% | 0.0% | 0.00 | 1 | 2,030 | $0.20 at list price ($0 on free tier) |
 | overload_naive_retry | stand-in | 33.9% | 66.1% | 0.0% | 3.77 | 0 | 2,111 | $0.20 at list price ($0 on free tier) |
 | rpm_halved | stand-in | 70.0% | 30.0% | 0.0% | 0.10 | 1 | 2,070 | $0.19 at list price ($0 on free tier) |
+| steady | real | 94.1% | 5.9% | 0.0% | 0.00 | 1 | 2,155 | $0.21 at list price ($0 on free tier) |
 | steady | stand-in | 88.2% | 11.8% | 0.0% | 0.00 | 1 | 2,097 | $0.20 at list price ($0 on free tier) |
 
 ## Table 3: Retrieval settings
 
 | Setting (piece size, pieces fetched, re-rank) | Questions asked | Correct and cited % | Wrong % | Correctly refused % | Tokens per answer | First token p50 / p95 (ms) | Total time p50 / p95 (ms) |
 |---|---|---|---|---|---|---|---|
+| 384 tokens, 4 pieces, bm25, re-rank no | 18 | 22.2% | 38.9% | 27.8% | 2,340 | 770 / 2,620 | 770 / 2,620 |
+| 384 tokens, 4 pieces, dense, re-rank no | 18 | 16.7% | 33.3% | 33.3% | 2,382 | 793 / 2,185 | 793 / 2,185 |
 | 384 tokens, 4 pieces, hybrid, re-rank no | 18 | 22.2% | 50.0% | 27.8% | 2,124 | 945 / 3,518 | 945 / 3,518 |

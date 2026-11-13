@@ -312,6 +312,23 @@ File: `results/review/hand-review-run4-archi.md` (run 4, the frozen pipeline).
 - **Correct:** grader 4/18 (22.2%), Archi 3/18 (16.7%). **Refusals:** 5/6 by both. All near-miss and off-topic questions were refused. The false premise was refused generically instead of being challenged.
 - **What this says about the design:** the next step would be a support check per claim. That's either a second model call (option B in P1, which halves throughput under the TPM limit) or a stricter local check, e.g. requiring each claim's key terms to appear in its quote. Not built (deadline); named in the report as the main weakness.
 
+## Final real runs (2026-11-13, 07:55–08:15 IST)
+- **Table 3 end to end** (frozen pipeline, real Groq, grader g2):
+
+  | Setting | Correct | Wrong | Refused correctly | Refused wrongly |
+  |---|---|---|---|---|
+  | hybrid (run 4) | 4 | 9 | 5 | 0 |
+  | bm25 | 4 | 7 | 5 | 2 |
+  | dense | 3 | 6 | 6 | 3 |
+
+  - **Q18 (false premise):** dense said `premise_false` correctly. **bm25 accepted the premise:** "The Transformer uses separable convolutional layers…", citing pp.6–7, where separable convolutions appear only as a comparison. The quote was genuine, so the check passed. This is the clearest example of verbatim ≠ supported, and of exact-word retrieval misleading.
+  - Hybrid stays the choice (R7). The differences are about one question; hybrid wrongly refused nothing.
+- **Real load:**
+  - steady: 17 requests at 3.3/min actual, 94.1% succeeded, first-token p50 / p95 777 / 7,137 ms;
+  - burst: 8 at once, 2 answered, 6 told "busy" (25.0%).
+  - These match the stand-in's same scenarios (burst 25.0%; steady 88.2%), which supports the calibration.
+- **No daily-limit 429 was seen**, so tokens/day stays "not observed".
+
 ## Local support check, measured against Archi's labels (2026-11-13)
 - **Rule** (`src/relay/support.py`, no model call): every number in a claim must appear in its quote (number words count), and ≥ 60% of the claim's content words (5-letter stems) must appear in the quote. The 0.6 threshold was set in code before scoring.
 - **Scored on Archi's 20 hand-labelled claims** (`scripts/eval_support_check.py`; labels read from `hand-review-run4-archi.md`): **caught 9 of 10 unsupported claims; wrongly dropped 3 of 10 supported claims.**

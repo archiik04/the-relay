@@ -1,7 +1,7 @@
 # The Relay: write-up
 
 ## 1. What I built and why
-A Python assistant that answers only from the three pinned papers (exact arXiv versions, stamp-checked):
+A Python assistant that answers only from the three pinned papers (versions stamp-checked):
 - **Understand:** rules, no model call. Which papers are named, and is it a comparison?
 - **Retrieve:** a `search_papers` tool over 384-token section-aware chunks (BM25 + bge-small fused, top 4, timeout and one retry). A comparison searches each paper separately: the *branch*.
 - **Draft:** one gpt-oss-20b call returns JSON claims, each with a chunk ID and an exact quote.
@@ -23,21 +23,16 @@ Limits came from tiny calls until a 429 (30/min), large prompts until a 429 (8K 
 **Stand-in:** same interface as Groq, calibrated by resampling **70 real calls** (first token p50 655 ms, generation p50 186 ms, 168 output tokens). It 429s in ~65 ms with retry-after and the same headers, streams in pieces, fails at the measured JSON rate, has slow outliers, and slows as calls pile up. **Least like Groq:**
 - it is in-process, so it has no network delays (§4);
 - its slowdown under load is assumed (Groq barely slowed at 10 at once);
-- its answers are synthetic, so quality is "not measured" on its rows.
+- its answers are synthetic, so quality is "not measured" on its rows. Against real runs of the same scenarios it held up: burst 25.0% succeeded on both; steady 94.1% real vs 88.2% stand-in.
 
 ## 3. Results
-Tables 1–3 follow, computed only from `results.csv` (nearest-rank percentiles, n shown; real vs stand-in per row). **A number we could not have guessed:** Groq's JSON mode rejected **1.25%** of outputs server-side, always on the same maths-heavy question (Q03). **Quality on 18 self-written questions:**
+Tables 1–3 follow, computed only from `results.csv`. **A number we could not have guessed:** Groq's JSON mode rejected **1.25%** of outputs server-side, always on the same maths-heavy question (Q03). **Quality on 18 self-written questions:**
 - refusals 5/6 correct (all near-miss and off-topic; the false premise was refused but not corrected);
 - answerable 4/12 by the automatic grader and 3/12 by my hand review, at ~2,100 tokens per answer;
 - by hand label, **50% of claims (10/20) say more than their own quote**. The grader matched my verdicts on 13/18.
 
 ## 4. Where the time goes
-**Q04 (real), first token at 3,518 ms:**
-- working: retrieval 24.5 ms, generation 226 ms (212 tokens, 132 reasoning), quote check 1.9 ms;
-- waiting: 3,265 ms before the model's first token;
-- retrying: none.
-
-Groq's `usage.queue_time` explains only 368 ms, so **the delay was before the first token and mostly outside Groq's reported queue** (network or front-end; unresolved). Shown by four timestamps per request plus Groq's usage fields. Buffering for the check cost 1.9 ms.
+**Q04 (real), first token at 3,518 ms.** Working: retrieval 24.5 ms, generation 226 ms (212 tokens, 132 reasoning), quote check 1.9 ms. Waiting: 3,265 ms before the model's first token. Retrying: none. Groq's `usage.queue_time` explains only 368 ms, so **the delay was before the first token and mostly outside Groq's reported queue** (network or front-end; unresolved). Shown by four timestamps per request plus Groq's usage fields. Buffering for the check cost 1.9 ms.
 
 ## 5. When a limit is hit
 **Per-minute.** The gateway estimates the wait from the queue and the token refill rate.
@@ -49,23 +44,18 @@ Groq's `usage.queue_time` explains only 368 ms, so **the delay was before the fi
 **Per-day.** No model call, and no fallback model (that would dodge the limit): a **labelled passages-only answer**. Because the limit refills, full answers trickle back (one at +135 s). Nobody gets a weaker *generated* answer.
 
 ## Retrieval: quality versus cost
-Table 3: [TOMORROW: bm25 and dense rows]. Retrieval alone (12 answerable questions, top 4):
+**End to end (Table 3, real Groq):** correct answers hybrid 4, bm25 4, dense 3; answerable questions wrongly refused 0, 2 and 3. Only dense challenged the false premise; bm25 accepted it (see the next section). Retrieval alone found a gold page for 91.7% (hybrid, MRR 0.833, 19 ms), 100% (dense, 0.840, 16 ms) and 91.7% (bm25, 0.708, 0.8 ms). A reranker never helped and cost +600–770 ms.
 
-| | Found a gold page | MRR | Time |
-|---|---|---|---|
-| hybrid | 91.7% | 0.833 | 19 ms |
-| dense | 100% | 0.840 | 16 ms |
-| bm25 | 91.7% | 0.708 | 0.8 ms |
-
-A reranker never helped and cost +600–770 ms. **Choice: hybrid, no rerank.** BM25 catches exact tokens and dense catches paraphrase, for 19 ms of a ~1 s request; one question is 8.3 points. **Near the limit we don't shrink retrieval:** we only degrade to benchmarked settings, so we stop at the passages-only reply.
+**Choice: hybrid, no rerank.** It wrongly refused nothing and costs 19 ms of a ~1 s request. The settings differ by about one question (8.3 points each), so this is a design choice, not a measured win. **Near the limit we don't shrink retrieval:** we only degrade to settings the benchmark has measured, so we stop at the passages-only reply.
 
 ## How this library will mislead a naive retriever
 1. **Comparisons pull one paper.** For Q12, one search returned only H-Net passages in every setting (fix: one search per paper).
 2. **Shared vocabulary.** For Q04 (Moshi's *Depth Transformer*), "Transformer" pulled the Attention paper's heads-and-layers table into the top 4, and Moshi's own table puts the Temporal Transformer's 32/32 beside the Depth Transformer's 16/6.
-3. **Facts lost in extraction.** H-Net's 0.5 threshold lives only in Equation 4, which extraction drops (Q09). Attention Table 2's merged rows give four models three BLEU values.
+3. **Words that match but mean the opposite.** For Q18 (a false premise about convolutional layers), bm25 matched "convolutional" to a passage comparing other models. The reply, *"The Transformer uses separable convolutional layers…"*, carried a genuine quote, so the check passed.
+4. **Facts lost in extraction.** H-Net's 0.5 threshold lives only in Equation 4, which extraction drops (Q09); merged table rows mismatch models and scores.
 
 ## 6. Retries
-**Policy:** retry a 429 after its retry-after (at most 2 per request and 20% of traffic, within the deadline). A retry-after longer than the deadline means the daily limit, so stop. Redraft a failed check once.
+**Policy:** retry a 429 after its retry-after (≤ 2 per request, ≤ 20% of traffic, within the deadline); a longer retry-after means the daily limit, so stop; redraft a failed check once.
 
 **Worse:** in real run 1, three redrafts (Q02, Q03, Q10) each paid a second full call (~2,500 tokens) and still failed; Q10 returned the identical draft. At 8K tokens/min that is ~21 s of budget, one other person's answer.
 
